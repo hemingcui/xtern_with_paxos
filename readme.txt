@@ -107,7 +107,7 @@ INPUTS = histogram_datafiles/large.bmp
 EXPORT = MR_NUMPROCS=16 MR_NUMTHREADS=16 MR_L1CACHESIZE=524288
 GZIP = histogram.tar.gz
 
-*** NOTE: regarding the number of threads you should use in your cfg files: we used 24-core 
+*** NOTE: regarding the number of threads you should use in your evaluation: we used 24-core 
 machines in our SOSP '13 Parrot evaluation and we used as many as cores to 
 measure the overhead at peak performance of the programs. If your machines 
 have fewer cores (e.g., 4-core), you should change the number of threads in 
