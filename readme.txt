@@ -2,8 +2,7 @@ Typical (and recommended) systems configuration for Parrot (a.k.a., xtern)
 ================
 Hardware: we have tried both 4-core and 24-core machines with 64 bits.
 OS: Ubuntu 11.10.
-gcc/g++: 4.5 (please use this gcc version if possible, because other modules
-such as llvm can be compiled with this version, but not gcc-4.6). One suggestion
+gcc/g++: 4.5 (please use this gcc version if possible). One suggestion
 is you could install 4.5 and setup a local link for it in your own PATH environment 
 variable, so that your "gcc -v" command would return 4.5.X.
 
@@ -41,38 +40,23 @@ file is the generic performance hints that benefit all OpenMP programs in
 our benchmarks.
 
 
-3. Build llvm. Go to directory $XTERN_ROOT, and run:
-> cd $XTERN_ROOT
-> ./llvm/build-llvm.sh --optimized
-The "--optimized" flag above is optional, if you are getting performance results,
-then you need this flag; if you are developing and need debug symbols,
-then you don't need this flag. If you have specified this "--optimized" flag,
-you need to specify "ENABLE_OPTIMIZED=1" in the following steps, otherwise 
-specify "ENABLE_OPTIMIZED=0". This LLVM compilation is only one way work,
-later if you check out a newer version of xtern, you do not need to rerun this,
-you only need to redo the Step 5 below.
-
-
-4. Config. that's because xtern uses LLVM makefile.common:
+3. Config.
 > cd $XTERN_ROOT
 > mkdir -p obj
 > cd obj
-> ./../configure --with-llvmsrc=$XTERN_ROOT/llvm/llvm-2.7/ \
-  --with-llvmobj=$XTERN_ROOT/llvm/llvm-obj/ \
-  --with-llvmgccdir=$XTERN_ROOT/llvm/install/bin/ \
-  --prefix=$XTERN_ROOT/install
+> ./../configure --prefix=$XTERN_ROOT/install
 
 
 5. Make. Every time after you 'git pull' xtern, you should go to this directory and make it.
 Always run "make clean" first, and then "make", and then "make install", as show below.
 > cd $XTERN_ROOT/obj
-> make ENABLE_OPTIMIZED=0/1 clean && make ENABLE_OPTIMIZED=0/1 && make ENABLE_OPTIMIZED=0/1 install
+> make clean && make && make install
 
 
 6. Test. It may take a few minutes. If it all passes, then everything has been installed correctly.
 This step may take a few minutes, depending on hardware speed.
 > cd $XTERN_ROOT/obj
-> make ENABLE_OPTIMIZED=0/1 -C test check
+> make -C test check
 
 
 
@@ -133,32 +117,30 @@ into account.
 
 
 
-****Again, without LLVM, testing no longer functions properly
 Testsuite (xtern/test)
 ======================
 
-Our testsuite uses LLVM's test system, which is subsequently based on
-dejagnu.
+Our testsuite is based on dejagnu.
 
 How to create a directory of tests
   - create a directory somewhere under xtern/test
   - cp dg.exp from another directory to this directory
-  - note that dg.exp expects testcases with .ll, .c, or .cpp extensions;
+  - note that dg.exp expects testcases with .c, or .cpp extensions;
     if your testcases use other extensions, please edit dg.exp accordingly
 
 How to write a test
-  - create a .ll, .c, or .cpp file
+  - create a .c, or .cpp file
   - add the commands  you want to run as comments in the form of (for example)
     // RUN: command
-    these RUN: lines will be automatically picked up by RunLLVMTests in
-    test/lib/llvm.exp
+    these RUN: lines will be automatically picked up by RunTests in
+    test/lib/default.exp
   - when writing the commands, you can use the variables predefined in
     test/Makefile
   - %s represents the test file, and %t1, %t2, ... represent temporary files.
 
 How to write check output of a test run against expected output?
   - can use the 'diff' command
-  - can also use LLVM's FileCheck (http://llvm.org/cmds/FileCheck.html);
+  - can also use the OutputCheck tool (https://github.com/stp/OutputCheck);
     see below
 
 How to run tests?
@@ -216,7 +198,7 @@ How to use FileCheck?
 Unit-testsuite (xtern/unittests)
 ================================
 
-Our unit-test framework uses LLVM's, which is subsequently based on GoogleTest
+Our unit-test framework is based on GoogleTest
 
 How to create unit tests
   - check out the examples in xtern/unittests/runtime
