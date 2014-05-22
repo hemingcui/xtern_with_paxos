@@ -37,7 +37,7 @@ include $(LEVEL)/Makefile.common
 
 .PHONY: cscope.files
 cscope.files:
-	cd $(PROJ_SRC_ROOT) && find \
+	cd $(SRC_ROOT) && find \
           include lib tools unittests test \
           -name Makefile -or \
           -name \*.in -or \
@@ -47,3 +47,6 @@ cscope.files:
           -name \*.inc -or \
           -name \*.h | sort > cscope.files && \
 	cscope -b
+
+install::
+	cd $(LEVEL)/dync_hook && make install
