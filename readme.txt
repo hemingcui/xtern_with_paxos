@@ -17,7 +17,7 @@ Installing Parrot (xtern)
 > sudo apt-get install dejagnu flex bison axel libboost-dev libtiff4-dev
 > sudo apt-get install zlib1g-dev libbz2-dev libxml-libxml-perl python-pip python-setuptools python-dev
 > sudo pip install numpy
-> sudo pip install OutputCheck (this utility is only required by the testing framework)
+> sudo pip install OutputCheck          (this utility is only required by the testing framework)
 > sudo apt-get install libxslt1-dev libxml2-dev
 > sudo easy_install-2.7 lxml
 > sudo apt-get install libgomp1 libgmp-dev libmpfr-dev libmpc-dev
@@ -48,13 +48,13 @@ our benchmarks.
 > ./../configure --prefix=$XTERN_ROOT/install
 
 
-5. Make. Every time after you 'git pull' xtern, you should go to this directory and make it.
+4. Make. Every time after you 'git pull' xtern, you should go to this directory and make it.
 Always run "make clean" first, and then "make", and then "make install", as show below.
 > cd $XTERN_ROOT/obj
 > make clean && make && make install
 
 
-6. Test. It may take a few minutes. If it all passes, then everything has been installed correctly.
+5. Test. It may take a few minutes. If it all passes, then everything has been installed correctly.
 This step may take a few minutes, depending on hardware speed.
 > cd $XTERN_ROOT/obj
 > make -C test check
@@ -106,6 +106,15 @@ INIT_ENV_CMD = sync
 INPUTS = histogram_datafiles/large.bmp
 EXPORT = MR_NUMPROCS=16 MR_NUMTHREADS=16 MR_L1CACHESIZE=524288
 GZIP = histogram.tar.gz
+
+*** NOTE: regarding the number of threads you should use in your cfg files: we used 24-core 
+machines in our SOSP '13 Parrot evaluation and we used as many as cores to 
+measure the overhead at peak performance of the programs. If your machines 
+have fewer cores (e.g., 4-core), you should change the number of threads in 
+these cfg files to match "use as many as cores" (i.e., you should use 4 
+threads), because if the number of threads in a program is larger than the 
+number of cores, the application itself would have exccessive core contention 
+at runtime and no longer at its peek performance.
 
 
 3. Running stl performance results. For all the other *-standard.cfg
