@@ -1,3 +1,3 @@
-load_lib llvm.exp
+load_lib default.exp
 
-RunLLVMTests [lsort [glob -nocomplain $srcdir/$subdir/*.{ll,c,cpp}]]
+RunTests [lsort [glob -nocomplain $srcdir/$subdir/*.{c,cpp}]]

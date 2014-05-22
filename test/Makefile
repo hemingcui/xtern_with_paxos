@@ -37,43 +37,52 @@ all:: check-local
 # Include other test rules
 include Makefile.tests
 
+
+
 #===------------------------------------------------------------------------===#
 # DejaGNU testing support
 #===------------------------------------------------------------------------===#
 
+# Heming: check if dejagnu is installed.
+RUNTEST := ;
+if [ -a /usr/bin/runtest ] ; \
+then \
+        RUNTEST := /usr/bin/runtest ; \
+fi;
+
 ifneq ($(RUNTEST),)
 check-local:: site.exp
 	( ulimit -t 600 ; ulimit -d 512000 ; \
-	  PATH="$(ToolDir):$(LLVMToolDir):$(LLVM_SRC_ROOT)/test/Scripts:$(PATH)" \
+	  PATH="$(ToolDir):$(SRC_ROOT)/test/Scripts:$(PATH)" \
 	  $(RUNTEST) $(RUNTESTFLAGS) ;  \
 	  ! grep FAIL testrun.log; ! grep -q ^FAIL testrun.log;  )
 else
 check-local:: site.exp
-	@echo "*** dejagnu not found.  Make sure runtest is in your PATH, then reconfigure llvm."
+	@echo "*** dejagnu not found.  Make sure runtest is in your PATH, then reconfigure."
 endif
 
 ifdef TESTONE
 CLEANED_TESTONE := $(patsubst %/,%,$(TESTONE))
 CLEANED_TESTONE := $(patsubst test/%,%,$(CLEANED_TESTONE))
 SUBDIR := $(shell dirname $(CLEANED_TESTONE))
-TESTPATH := $(PROJ_SRC_ROOT)/test/$(CLEANED_TESTONE)
+TESTPATH := $(SRC_ROOT)/test/$(CLEANED_TESTONE)
 check-one: site.exp $(TCLSH)
-	$(Verb)( echo "source $(PROJ_OBJ_ROOT)/test/site.exp" ; \
+	$(Verb)( echo "source $(OBJ_ROOT)/test/site.exp" ; \
 	  echo "set subdir $(SUBDIR)" ; \
 	  echo "proc pass  { msg } { puts \"PASS: \$$msg\" } "; \
 	  echo "proc fail  { msg } { puts \"FAIL: \$$msg\" }" ; \
 	  echo "proc xfail { msg } { puts \"XFAIL: \$$msg\" }" ; \
 	  echo "proc xpass { msg } { puts \"XPASS: \$$msg\" }" ; \
-	  echo "source $(PROJ_SRC_ROOT)/test/lib/llvm.exp" ; \
-	  echo "RunLLVMTests $(TESTPATH)" ) | \
+	  echo "source $(SRC_ROOT)/test/lib/default.exp" ; \
+	  echo "RunTests $(TESTPATH)" ) | \
 	( ulimit -t 600 ; ulimit -d 512000 ; \
-	  PATH="$(ToolDir):$(LLVMToolDir):$(LLVM_SRC_ROOT)/test/Scripts:$(PATH)" \
+	  PATH="$(ToolDir):$(SRC_ROOT)/test/Scripts:$(PATH)" \
 	  $(TCLSH) )
 endif
 
 clean::
-	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name Output -type d -print`
-	$(RM) -rf `find $(PROJ_OBJ_ROOT)/test -name '*~'`
+	$(RM) -rf `find $(OBJ_ROOT)/test -name Output -type d -print`
+	$(RM) -rf `find $(OBJ_ROOT)/test -name '*~'`
 	rm -f site.exp
 
 site.exp: Makefile $(LEVEL)/Makefile.config
@@ -82,14 +91,14 @@ site.exp: Makefile $(LEVEL)/Makefile.config
 	@echo '# Do not edit here.  If you wish to override these values' >>site.tmp
 	@echo '# edit the last section' >>site.tmp
 	@echo 'set target_triplet "$(TARGET_TRIPLE)"' >> site.tmp
-	@echo 'set srcroot "$(PROJ_SRC_ROOT)"' >>site.tmp
-	@echo 'set objroot "$(PROJ_OBJ_ROOT)"' >>site.tmp
-	@echo 'set srcdir "$(PROJ_SRC_ROOT)/test"' >>site.tmp
-	@echo 'set objdir "$(PROJ_OBJ_ROOT)/test"' >>site.tmp
-	@echo 'set projlibdir "$(PROJ_OBJ_ROOT)/$(BuildMode)/lib"' >>site.tmp
-	@echo 'set projbindir "$(PROJ_OBJ_ROOT)/$(BuildMode)/bin"' >>site.tmp
-	@echo 'set ternruntime "-L$(PROJ_OBJ_ROOT)/$(BuildMode)/lib -lruntime -lcommon"' >>site.tmp
-	@echo 'set ternannotlib "-I$(PROJ_SRC_ROOT)/include -L$(PROJ_SRC_ROOT)/dync_hook -lxtern-annot"' >>site.tmp
+	@echo 'set srcroot "$(SRC_ROOT)"' >>site.tmp
+	@echo 'set objroot "$(OBJ_ROOT)"' >>site.tmp
+	@echo 'set srcdir "$(SRC_ROOT)/test"' >>site.tmp
+	@echo 'set objdir "$(OBJ_ROOT)/test"' >>site.tmp
+	@echo 'set projlibdir "$(OBJ_ROOT)/lib"' >>site.tmp
+	@echo 'set projbindir "$(OBJ_ROOT)/bin"' >>site.tmp
+	@echo 'set ternruntime "-L$(OBJ_ROOT)/lib -lruntime -lcommon"' >>site.tmp
+	@echo 'set ternannotlib "-I$(SRC_ROOT)/include -L$(SRC_ROOT)/dync_hook -lxtern-annot"' >>site.tmp
 	@echo 'set gcc "gcc -w"' >> site.tmp
 	@echo 'set gxx "g++ -w"' >> site.tmp
 	@echo 'set timeout 1' >> site.tmp
