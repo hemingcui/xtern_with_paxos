@@ -112,7 +112,7 @@ machines in our SOSP '13 Parrot evaluation and we used as many as cores to
 measure the overhead at peak performance of the programs. If your machines 
 have fewer cores (e.g., 4-core), you should change the number of threads in 
 these cfg files to match "use as many as cores" (i.e., you should use 4 
-threads), because if the number of threads in a program is larger than the 
+threads), because when the number of threads in a program is larger than the 
 number of cores, the application itself would have exccessive core contention 
 at runtime and no longer at its peek performance.
 
