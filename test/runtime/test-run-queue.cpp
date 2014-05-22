@@ -85,35 +85,35 @@ int main(int argc, char *argv[]) {
 
 
 // CHECK: q size 5
-// CHECK-NEXT: q[0] = 2, status = 0
-// CHECK-NEXT: q[1] = 3, status = 0
-// CHECK-NEXT: q[2] = 4, status = 0
-// CHECK-NEXT: q[3] = 5, status = 0
-// CHECK-NEXT: q[4] = 6, status = 0
-// CHECK-NEXT: q size 4
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 4, status = 0
-// CHECK-NEXT: q[2] = 5, status = 0
-// CHECK-NEXT: q[3] = 6, status = 0
-// CHECK-NEXT: q size 3
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 5, status = 0
-// CHECK-NEXT: q[2] = 6, status = 0
-// CHECK-NEXT: q size 3
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 5, status = 0
-// CHECK-NEXT: q[2] = 6, status = 0
-// CHECK-NEXT: q size 2
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 5, status = 0
-// CHECK-NEXT: q size 2
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 5, status = 0
-// CHECK-NEXT: q size 3
-// CHECK-NEXT: q[0] = 4, status = 0
-// CHECK-NEXT: q[1] = 3, status = 0
-// CHECK-NEXT: q[2] = 5, status = 0
-// CHECK-NEXT: q size 2
-// CHECK-NEXT: q[0] = 3, status = 0
-// CHECK-NEXT: q[1] = 5, status = 0
+// CHECK-NEXT-L: q[0] = 2, status = 0
+// CHECK-NEXT-L: q[1] = 3, status = 0
+// CHECK-NEXT-L: q[2] = 4, status = 0
+// CHECK-NEXT-L: q[3] = 5, status = 0
+// CHECK-NEXT-L: q[4] = 6, status = 0
+// CHECK-NEXT-L: q size 4
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 4, status = 0
+// CHECK-NEXT-L: q[2] = 5, status = 0
+// CHECK-NEXT-L: q[3] = 6, status = 0
+// CHECK-NEXT-L: q size 3
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 5, status = 0
+// CHECK-NEXT-L: q[2] = 6, status = 0
+// CHECK-NEXT-L: q size 3
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 5, status = 0
+// CHECK-NEXT-L: q[2] = 6, status = 0
+// CHECK-NEXT-L: q size 2
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 5, status = 0
+// CHECK-NEXT-L: q size 2
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 5, status = 0
+// CHECK-NEXT-L: q size 3
+// CHECK-NEXT-L: q[0] = 4, status = 0
+// CHECK-NEXT-L: q[1] = 3, status = 0
+// CHECK-NEXT-L: q[2] = 5, status = 0
+// CHECK-NEXT-L: q size 2
+// CHECK-NEXT-L: q[0] = 3, status = 0
+// CHECK-NEXT-L: q[1] = 5, status = 0
 

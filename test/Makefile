@@ -44,17 +44,17 @@ include Makefile.tests
 #===------------------------------------------------------------------------===#
 
 # Heming: check if dejagnu is installed.
-RUNTEST := ;
+HAVE_DEJAGNU := ;
 if [ -a /usr/bin/runtest ] ; \
 then \
-        RUNTEST := /usr/bin/runtest ; \
+	HAVE_DEJAGNU := 1; \
 fi;
 
-ifneq ($(RUNTEST),)
+ifneq ($(HAVE_DEJAGNU),)
 check-local:: site.exp
 	( ulimit -t 600 ; ulimit -d 512000 ; \
 	  PATH="$(ToolDir):$(SRC_ROOT)/test/Scripts:$(PATH)" \
-	  $(RUNTEST) $(RUNTESTFLAGS) ;  \
+	  /usr/bin/runtest ;  \
 	  ! grep FAIL testrun.log; ! grep -q ^FAIL testrun.log;  )
 else
 check-local:: site.exp
