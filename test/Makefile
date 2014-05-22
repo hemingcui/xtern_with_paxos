@@ -32,7 +32,7 @@ DIRS  :=
 #
 # Make Dejagnu the default for testing
 #
-all:: check-local
+all:: check
 
 # Include other test rules
 include Makefile.tests
@@ -51,13 +51,13 @@ then \
 fi;
 
 ifneq ($(HAVE_DEJAGNU),)
-check-local:: site.exp
+check:: site.exp
 	( ulimit -t 600 ; ulimit -d 512000 ; \
 	  PATH="$(ToolDir):$(SRC_ROOT)/test/Scripts:$(PATH)" \
 	  /usr/bin/runtest ;  \
 	  ! grep FAIL testrun.log; ! grep -q ^FAIL testrun.log;  )
 else
-check-local:: site.exp
+check:: site.exp
 	@echo "*** dejagnu not found.  Make sure runtest is in your PATH, then reconfigure."
 endif
 
