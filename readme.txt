@@ -17,6 +17,7 @@ Installing Parrot (xtern)
 > sudo apt-get install dejagnu flex bison axel libboost-dev libtiff4-dev
 > sudo apt-get install zlib1g-dev libbz2-dev libxml-libxml-perl python-pip python-setuptools python-dev
 > sudo pip install numpy
+> sudo pip install OutputCheck (this utility is only required by the testing framework)
 > sudo apt-get install libxslt1-dev libxml2-dev
 > sudo easy_install-2.7 lxml
 > sudo apt-get install libgomp1 libgmp-dev libmpfr-dev libmpc-dev
