@@ -19,13 +19,6 @@
 # IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-build_mode="Debug"
-for arg in "$@"; do
-    if test "$arg" = "--optimized"; then
-        build_mode="Release"
-    fi
-done
-
 timeout=1200
 sendmail="/usr/sbin/sendmail"
 toaddr="dmt-dev@lists.cs.columbia.edu"
@@ -35,7 +28,7 @@ xtern_git="git@repair.cs.columbia.edu:xtern"
 # xtern_git="/home/junfeng/work/xtern"
 
 #testdir=`date +%F`
-testdir="/tmp/xtern-nightly-test-$build_mode"
+testdir="/tmp/xtern-nightly-test"
 rm -rf $testdir
 mkdir -p $testdir
 cd $testdir
@@ -52,7 +45,6 @@ mkdir obj
 cd obj
 ../configure --prefix=$XTERN_ROOT/install >> $log
 make >> $log
-make -C $XTERN_ROOT/dync_hook >> $log
 
 # run tests
 cd $XTERN_ROOT/obj
