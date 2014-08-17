@@ -63,6 +63,8 @@ proc substitute { line test tmpFile } {
   regsub -all {%gxx} $new_line "$gxx" new_line
   #replace %srcroot with project source root directory
   regsub -all {%srcroot} $new_line "$srcroot" new_line
+  #replace %objroot with project object root directory
+  regsub -all {%objroot} $new_line "$objroot" new_line
   #replace %projlibdir with project library directory
   regsub -all {%projlibdir} $new_line "$projlibdir" new_line
   #replace %projbindir with project bin directory

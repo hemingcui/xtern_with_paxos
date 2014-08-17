@@ -40,16 +40,12 @@ parser.add_argument('program',
                     help='.c, .cpp, or .ll program to run test on')
 parser.add_argument('-gxx', dest='gxx', required=True,
                     help='g++ command line')
-parser.add_argument('-llvmgcc', dest='llvmgcc', required=True,
-                    help='llvmgcc command line')
-parser.add_argument('-projbindir', dest='projbindir', required=True,
+parser.add_argument('-objroot', dest='objroot', required=True,
                     help='directory where tern tools are located')
 parser.add_argument('-ternruntime', dest='ternruntime', required=True,
                     help='tern x86 runtime')
 parser.add_argument('-ternannotlib', dest='ternannotlib', required=True,
                     help='tern annotation library')
-parser.add_argument('-ternbcruntime', dest='ternbcruntime', required=True,
-                    help='tern bc runtime')
 parser.add_argument('-nondet', dest='nondet', default=False, action='store_true',
                     help='skip checking of determinism')
 parser.add_argument('-gen', dest='gen', default=False, action='store_true',
@@ -187,7 +183,7 @@ def run(cmd, map):
     for key, val in map.iteritems():
         # print key, val
         if isinstance(val, str):
-            cmd = cmd.replace('%'+key, val)
+            cmd = re.sub(r'%'+re.escape(key)+r'\b', val, cmd)
     if args['gen'] and gen(cmd, prog):
         return
     if (not args['nondet']) and cmd.endswith('ScheduleCheck'):
@@ -208,35 +204,35 @@ args['t'] = os.path.basename(args['s']) + '.tmp'
 cmds = '''
 
 // test dynamic hooking
-// RUN: %gxx -o %t4 %s -lpthread -lrt %ternannotlib
+// RUN: %gxx -o %t %s -lpthread -lrt %ternannotlib
 // test FCFS scheduler
 // NOTE: do not use dync_geteip as the lock used by backtrace() may cause
 // a deadlock
 
 // test RR scheduler
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 | OutputCheck %s
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 ScheduleCheck
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:enforce_turn_type=1:log_sync=1 LD_PRELOAD=%objroot/dync_hook/interpose.so  LD_LIBRARY_PATH=%objroot/dync_hook ./%t | OutputCheck %s
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:enforce_turn_type=1:log_sync=1 LD_PRELOAD=%objroot/dync_hook/interpose.so  LD_LIBRARY_PATH=%objroot/dync_hook ./%t ScheduleCheck
 
 // test RR scheduler
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 | OutputCheck %s
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 ScheduleCheck
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1 LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t | OutputCheck %s
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1 LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t ScheduleCheck
 '''
 
 if os.getenv('test_dync_only') != None :
   cmds = '''
 // test dynamic hooking
-// RUN: %gxx -o %t4 %s -lpthread -lrt %ternannotlib
+// RUN: %gxx -o %t %s -lpthread -lrt %ternannotlib
 // test FCFS scheduler
 // NOTE: do not use dync_geteip as the lock used by backtrace() may cause
 // a deadlock
 
 // test RR scheduler
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 | OutputCheck %s
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 ScheduleCheck
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1  LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t | OutputCheck %s
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:nanosec_per_turn=100000:enforce_turn_type=1:log_sync=1  LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t ScheduleCheck
 
 // test RR scheduler
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 | OutputCheck %s
-// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t2.outdir:enforce_turn_type=1:log_sync=1:dync_geteip=1  LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so  ./%t4 ScheduleCheck
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:enforce_turn_type=1:log_sync=1  LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t | OutputCheck %s
+// RUN: env TERN_OPTIONS=set_mutex_errorcheck=1:dync_geteip=0:log_type=test:exec_sleep=0:output_dir=%t.outdir:enforce_turn_type=1:log_sync=1  LD_PRELOAD=%objroot/dync_hook/interpose.so LD_LIBRARY_PATH=%objroot/dync_hook ./%t ScheduleCheck
 '''
 
 for cmd in cmds.splitlines():

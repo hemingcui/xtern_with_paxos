@@ -98,7 +98,7 @@ site.exp: Makefile $(LEVEL)/Makefile.config
 	@echo 'set projlibdir "$(OBJ_ROOT)/lib"' >>site.tmp
 	@echo 'set projbindir "$(OBJ_ROOT)/bin"' >>site.tmp
 	@echo 'set ternruntime "-L$(OBJ_ROOT)/lib -lruntime -lcommon"' >>site.tmp
-	@echo 'set ternannotlib "-I$(SRC_ROOT)/include -L$(SRC_ROOT)/dync_hook -lxtern-annot"' >>site.tmp
+	@echo 'set ternannotlib "-I$(SRC_ROOT)/include -L$(OBJ_ROOT)/dync_hook -lxtern-annot"' >>site.tmp
 	@echo 'set gcc "gcc -w"' >> site.tmp
 	@echo 'set gxx "g++ -w"' >> site.tmp
 	@echo 'set timeout 1' >> site.tmp
