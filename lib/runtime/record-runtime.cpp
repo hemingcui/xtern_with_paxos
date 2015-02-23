@@ -318,7 +318,7 @@ void RecorderRT<RecordSerializer>::idle_sleep(void) {
     _S::wakeup(); \
   } \
   errno = backup_errno;
-  //fprintf(stderr, "\n\nBLOCK_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  //fprintf(stderr, "\n\nBLOCK_TIMER_END pid %d, self %u, tid %d, turnCount %u, function %s\n", getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 #define SCHED_TIMER_START \
   unsigned nturn; \
@@ -2029,6 +2029,20 @@ ssize_t RecorderRT<_S>::__write(unsigned ins, int &error, int fd, const void *bu
   dprintf("RecorderRT<_S>::__write handles inter-process file %d\n", fd);
   ssize_t ret = Runtime::__write(ins, error, fd, buf, count);
   BLOCK_TIMER_END(syncfunc::write, (uint64_t) fd, (uint64_t) ret);
+  return ret;
+}
+
+template <typename _S>
+size_t RecorderRT<_S>::__fread(unsigned ins, int &error, void * ptr, size_t size, size_t count, FILE * stream)
+{
+  // First, handle regular IO.
+  if (options::RR_ignore_rw_regular_file && regularFile(fileno(stream)))
+    return fread(ptr, size, count, stream);  // Directly call the libc fread() for regular IO.
+
+  // Second, handle inter-process IO.
+  BLOCK_TIMER_START(fread, ins, error, ptr, size, count, stream);
+  size_t ret = Runtime::__fread(ins, error, ptr, size, count, stream);
+  BLOCK_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
   return ret;
 }
 

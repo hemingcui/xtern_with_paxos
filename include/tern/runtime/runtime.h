@@ -209,6 +209,7 @@ struct Runtime {
   virtual int __close(unsigned insid, int &error, int fd);
   virtual ssize_t __read(unsigned insid, int &error, int fd, void *buf, size_t count);
   virtual ssize_t __write(unsigned insid, int &error, int fd, const void *buf, size_t count);
+  virtual size_t __fread(unsigned insid, int &error, void * ptr, size_t size, size_t count, FILE * stream);
   virtual ssize_t __pread(unsigned insid, int &error, int fd, void *buf, size_t count, off_t offset);
   virtual ssize_t __pwrite(unsigned insid, int &error, int fd, const void *buf, size_t count, off_t offset);
   virtual int __select(unsigned insid, int &error, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);  

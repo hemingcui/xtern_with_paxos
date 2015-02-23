@@ -200,6 +200,7 @@ void TxtLogger::logSync(unsigned insid, unsigned short sync,
     // log three sync vars
   case syncfunc::pthread_cond_timedwait:  //  cv, mu, ret
   case syncfunc::read:  //  sig, fd, ret
+  case syncfunc::fread:  //  sig, ptr, size
   case syncfunc::pread:  //  sig, fd, ret
   case syncfunc::accept:  //  sock(ret), from_port, to_port
   case syncfunc::write: //  sig, fd, ret
@@ -604,6 +605,7 @@ void TestLogger::logSync(unsigned insid, unsigned short sync,
     // log three sync vars
   case syncfunc::pthread_cond_timedwait:  //  cv, mu, ret
   case syncfunc::read:  //  sig, fd, ret
+  case syncfunc::fread:  //  sig, ptr, size
   case syncfunc::pread:  //  sig, fd, ret
   case syncfunc::accept:  //  sock(ret), from_port, to_port
   case syncfunc::write: //  sig, fd, ret

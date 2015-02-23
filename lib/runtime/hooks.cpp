@@ -743,6 +743,17 @@ ssize_t tern_write(unsigned ins, int fd, const void *buf, size_t count)
   return ret;
 }
 
+size_t tern_fread(unsigned ins, void * ptr, size_t size, size_t count, FILE * stream)
+{
+  int error = errno;
+  int ret;
+  Space::enterSys();
+  ret = Runtime::the->__fread(ins, error, ptr, size, count, stream);
+  Space::exitSys();
+  errno = error;
+  return ret;
+}
+
 ssize_t tern_pread(unsigned ins, int fd, void *buf, size_t count, off_t offset)
 {
   int error = errno;

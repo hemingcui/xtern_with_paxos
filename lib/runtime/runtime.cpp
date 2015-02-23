@@ -774,6 +774,23 @@ ssize_t Runtime::__write(unsigned ins, int &error, int fd, const void *buf, size
   return ret;
 }
 
+size_t Runtime::__fread(unsigned ins, int &error, void * ptr, size_t size, size_t count, FILE * stream)
+{
+  errno = error;
+  ssize_t ret;
+#ifdef XTERN_PLUS_DBUG
+  typedef size_t (*orig_func_type)(void *, size_t, size_t, FILE *);
+  static orig_func_type orig_func;
+  if (!orig_func)
+    orig_func = (orig_func_type)resolveDbugFunc("fread");
+  ret = orig_func(ptr, size, count, stream);
+#else
+  ret = fread(ptr, size, count, stream);
+#endif
+  error = errno;
+  return ret;
+}
+
 ssize_t Runtime::__pread(unsigned ins, int &error, int fd, void *buf, size_t count, off_t offset)
 {
   errno = error;

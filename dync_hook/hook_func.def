@@ -342,6 +342,18 @@ SECTION
 ENDDEF
 
 STARTDEF
+size_t
+fread
+/libc.so.6
+void *, size_t, size_t, FILE *
+SECTION
+void * ptr, size_t size, size_t count, FILE * stream
+SECTION
+ptr, size, count, stream
+SECTION
+ENDDEF
+
+STARTDEF
 ssize_t
 pread
 /libc.so.6

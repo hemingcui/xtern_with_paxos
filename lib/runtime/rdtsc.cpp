@@ -26,6 +26,7 @@ std::vector<sync_op_entry *> rdtsc_log;
 size_t rdtsc_index = (size_t)-1;
 
 void process_rdtsc_log(void) {
+#if 0
   fprintf(stderr, "Storing rdtsc log...\n");fflush(stderr);
   char log_path[1024];
   memset(log_path, 0, 1024);
@@ -46,6 +47,7 @@ void process_rdtsc_log(void) {
   fflush(f);
   fclose(f);
   rdtsc_index = 0;
+#endif
 }
 
 void record_rdtsc_op(const char *op_name, const char *op_suffix, int print_depth, void *eip) {

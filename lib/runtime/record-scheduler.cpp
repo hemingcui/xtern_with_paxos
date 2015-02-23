@@ -29,6 +29,7 @@
 #include <cstring>
 #include <algorithm>
 #include <sched.h>
+#include <sys/time.h>
 #include "tern/options.h"
 #include "tern/runtime/rdtsc.h"
 
@@ -137,7 +138,6 @@ int RRScheduler::fireTimeouts()
   // use delete-safe way of iterating the list
   for(cur=waitq.begin(); cur!=waitq.end();) {
     prv = cur ++;
-
     int tid = *prv;
     assert(tid >=0 && tid < Scheduler::nthread);
     if(waits[tid].timeout < turnCount) {
@@ -163,8 +163,6 @@ void RRScheduler::check_wakeup()
       if (!runq.in(*itr)) {
         runq.push_back(*itr);
         if (options::enforce_non_det_clock_bound) {
-          dprintf("check_wakeup: current logical clock %u, first non det tid %d, my tid %d, non det logical clock %u, \
-            the system is within bounded non-determinism.\n", turnCount, *itr, self(), non_det_thds.get_clock(*itr));
           non_det_thds.erase(*itr); // This operation is required by the bounded non-determinism mechanism.
         }
       }
@@ -212,6 +210,7 @@ void RRScheduler::next(bool at_thread_end, bool hasPoppedFront)
   assert(next_tid>=0 && next_tid < Scheduler::nthread);
   dprintf("RRScheduler: next is %d\n", next_tid);
   SELFCHECK;
+
   waits[next_tid].post();
 }
 
@@ -259,7 +258,7 @@ void RRScheduler::idleThreadCondWait() {
     assert(tid == runq.front());
     next();
     pthread_cond_wait(&idle_cond, &idle_mutex);
-  } else 
+  } else
     putTurn();  // TBD: this seems not that nice, need refactored. Refer to record-runtime.
 }
 
@@ -271,6 +270,7 @@ void RRScheduler::getTurn()
   assert(tid>=0 && tid < Scheduler::nthread);
   waits[tid].wait();
   dprintf("RRScheduler: %d gets turn\n", self());
+
   SELFCHECK;
 }
 

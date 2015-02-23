@@ -144,6 +144,7 @@ struct RecorderRT: public Runtime, public _Scheduler {
   int __close(unsigned insid, int &error, int fd);
   ssize_t __read(unsigned insid, int &error, int fd, void *buf, size_t count);
   ssize_t __write(unsigned insid, int &error, int fd, const void *buf, size_t count);
+  size_t __fread (unsigned insid, int &error, void * ptr, size_t size, size_t count, FILE * stream);
   ssize_t __pread(unsigned insid, int &error, int fd, void *buf, size_t count, off_t offset);
   ssize_t __pwrite(unsigned insid, int &error, int fd, const void *buf, size_t count, off_t offset);
   int __select(unsigned insid, int &error, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);  
