@@ -164,7 +164,7 @@ struct Serializer: public TidMap {
   /// wake up one thread (@all = false) or all threads (@all = true)
   /// waiting on @chan; must call with turn held.  @chan has the same
   /// requirement as wait()
-  virtual std::list<int> signal(void *chan, bool all = false) { std::list<int> l; return l; }
+  virtual void signal(void *chan, bool all = false) { }
 
   /// get the turn so that other threads trying to get the turn must wait
   virtual void getTurn() { }
@@ -254,7 +254,7 @@ struct Scheduler: public Serializer {
   /// wake up one thread (@all = false) or all threads (@all = true)
   /// waiting on @chan; must call with turn held.  @chan has the same
   /// requirement as wait()
-  std::list<int> signal(void *chan, bool all = false) {std::list<int> l; return l; }
+  void signal(void *chan, bool all = false) { }
 
   void create(pthread_t new_th) {
     assert(self() == runq.front());

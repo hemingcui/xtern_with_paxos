@@ -29,24 +29,12 @@ TERN_LIBS=-L$(OBJ_ROOT)/lib/ -lruntime -lcommon
 CFLAGS += $(INC_DIRS)
 CXXFLAGS += $(INC_DIRS)
 HOOK_DIR=$(SRC_ROOT)/dync_hook
-ifndef $(XTERN_PLUS_DBUG)
-	XTERN_PLUS_DBUG=0
-endif
 
-all:: interpose.so libxtern-annot.so interpose_mc.so
+all:: interpose.so libxtern-annot.so
 
 interpose.so: template.cpp spec_hooks.cpp hook.cpp
-ifneq ($(XTERN_PLUS_DBUG),1)
 	gcc -fPIC -rdynamic $(HOOK_DIR)/hook.cpp $(CFLAGS) -c -o interpose.o
 	gcc $(CFLAGS) -shared -Wl,-soname,interpose.so interpose.o -o interpose.so -ldl $(TERN_LIBS) $(STD_LIBS)
-endif
-
-interpose_mc.so: template.cpp spec_hooks.cpp hook.cpp
-ifeq ($(XTERN_PLUS_DBUG),1)
-	gcc -fPIC -rdynamic $(HOOK_DIR)/hook.cpp $(CFLAGS) -c -o interpose.o
-	gcc $(CFLAGS) -shared -Wl,-soname,interpose_mc.so interpose.o -o interpose_mc.so -ldl $(TERN_LIBS) $(STD_LIBS) \
-	-Wl,--rpath,$(SMT_MC_ROOT)/mc-tools/dbug/install/lib -L$(SMT_MC_ROOT)/mc-tools/dbug/install/lib -ldbug-stubs
-endif
 
 libxtern-annot.so: xtern-annot.cpp
 	gcc -fPIC -rdynamic $(HOOK_DIR)/xtern-annot.cpp $(CFLAGS) -c -o xtern-annot.o

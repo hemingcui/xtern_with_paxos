@@ -429,12 +429,9 @@ void tern_pthread_exit(unsigned ins, void *retval) {
     exit(0);
   }
   assert(Space::isSys());
-  if (Scheduler::self() != Scheduler::IdleThreadTid) {
-#ifdef XTERN_PLUS_DBUG
-    Runtime::__attach_self_to_dbug(__FUNCTION__);
-#endif
+  if (Scheduler::self() != Scheduler::IdleThreadTid)
     Runtime::__pthread_exit(retval);
-  } else
+  else
     pthread_exit(retval);
 }
 

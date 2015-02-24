@@ -185,25 +185,12 @@ void InstallRuntime() {
 
 template <typename _S>
 int RecorderRT<_S>::syncWait(void *chan, unsigned timeout) {
-#ifdef XTERN_PLUS_DBUG
-    dprintf("Parrot pid %d, tid %d self %u dbug waiting...\n", getpid(), _S::self(), (unsigned)pthread_self());
-  Runtime::__thread_waiting();
-#endif
   return _S::wait(chan, timeout);
 }
 
 template <typename _S>
 void RecorderRT<_S>::syncSignal(void *chan, bool all) {
-  std::list<int> signal_list = _S::signal(chan, all);
-#ifdef XTERN_PLUS_DBUG
-  std::list<int>::iterator itr;
-  for (itr = signal_list.begin(); itr != signal_list.end(); itr++) {
-    pthread_t tid = _S::getPthreadTid(*itr);
-    Runtime::__thread_active(tid);
-    dprintf("Parrot pid %d self %u tid %d signals tid %d self %u dbug active\n", 
-      getpid(), (unsigned)pthread_self(), _S::self(), *itr, (unsigned)tid);
-  }
-#endif
+  _S::signal(chan, all);
 }
 
 template <typename _S>
@@ -484,29 +471,6 @@ int RecorderRT<_S>::pthreadCreate(unsigned ins, int &error, pthread_t *thread,
 template <typename _S>
 int RecorderRT<_S>::pthreadJoin(unsigned ins, int &error, pthread_t th, void **rv) {
   int ret;
-
-#ifdef XTERN_PLUS_DBUG
-  /*
-    This is a temp hack, because currently there is conflict between the join 
-    of xtern and join of dbug. Xtern actually waits for the child thread to be 
-    dead and then proceed, and dbug actually have to pairwise both 
-    child-thread-exit and join of parent. This is conflicting.
-    So the current hack (xtern gives up the order) is just do not involve xtern but just directly move 
-    parent from runq first (because there may be non-det to wait for runq
-    to be empty), calls the real join (and jump into dbug), and then call 
-    _S::join() to clean the zombies set, and then put myself back to runq.
-  */
-  if (th != idle_th) {
-    //fprintf(stderr, "\n\nxtern::Thread %u calls pthreadJoin start...\n\n\n", (unsigned)pthread_self());
-    _S::block();
-    ret = Runtime::__pthread_join(th, rv);
-    _S::join(th); // This may be dangerous because current thread is not having the turn.
-    _S::wakeup();
-    //fprintf(stderr, "\n\nxtern::Thread %u calls pthreadJoin end, ok...\n\n\n", (unsigned)pthread_self());
-    return ret;
-  }
-#endif
-
   SCHED_TIMER_START;
   // NOTE: can actually use if(!_S::zombie(th)) for DMT schedulers because
   // their wait() won't return until some thread signal().
@@ -1570,13 +1534,6 @@ void RecorderRT<_S>::nonDetStart() {
     stat.nNonDetRegions++;
 
   nNonDetWait++;
-  /** Although at this moment current thread is still in the xtern runq, we pre-attach it to dbug,
-  so that after _S::block() below is called, for whatever operation current thread is going to call,                                    dbug will know totally how many threads 
-  should be blocked (so that dbug can explore the upper bound of non-determinism for these
-  non-det regions). **/
-#ifdef XTERN_PLUS_DBUG
-  Runtime::__attach_self_to_dbug(__FUNCTION__);
-#endif
 
   /** All non-det operations are blocked on this fake var until runq is empty, 
   i.e., all valid (except idle thread) xtern threads are paused.
@@ -1607,22 +1564,11 @@ void RecorderRT<_S>::nonDetEnd() {
   do not need to worry about the order between this non_det_end() and other non-det sync
   in other threads' non-det regions, so we do not need to call the wait(NON_DET_BLOCKED)
   as in non_det_start(). **/
-#ifdef XTERN_PLUS_DBUG
-  Runtime::__detach_self_from_dbug(__FUNCTION__);
-#endif
-
   _S::wakeup(); /** Reuse existing xtern API. Put myself to wake-up queue, 
                             other threads grabbing the turn will put myself back to runq. This operation is non-
                             determinisit since we do not get turn, but it is fine, because there is already 
                             some non-det sync ops within the region already. Note that after this point, the 
                             status of the thread is still runnable. **/
-}
-
-template <typename _S>
-void RecorderRT<_S>::threadDetach() {
-#ifdef XTERN_PLUS_DBUG
-  Runtime::__thread_detach();
-#endif
 }
 
 template <typename _S>
@@ -1635,15 +1581,15 @@ void RecorderRT<_S>::nonDetBarrierEnd(int bar_id, int cnt) {
   do not need to worry about the order between this non_det_end() and other non-det sync
   in other threads' non-det regions, so we do not need to call the wait(NON_DET_BLOCKED)
   as in non_det_start(). **/
-#ifdef XTERN_PLUS_DBUG
-  Runtime::__detach_barrier_end(bar_id, cnt);
-#endif
-
   _S::wakeup(); /** Reuse existing xtern API. Put myself to wake-up queue,
                             other threads grabbing the turn will put myself back to runq. This operation is non-
                             determinisit since we do not get turn, but it is fine, because there is already
                             some non-det sync ops within the region already. Note that after this point, the
                             status of the thread is still runnable. **/
+}
+
+template <typename _S>
+void RecorderRT<_S>::threadDetach() {
 }
 
 template <typename _S>
@@ -2259,12 +2205,6 @@ int RecorderRT<_S>::schedYield(unsigned ins, int &error)
 template <typename _S>
 unsigned int RecorderRT<_S>::__sleep(unsigned ins, int &error, unsigned int seconds)
 {
-#ifdef XTERN_PLUS_DBUG
-  BLOCK_TIMER_START(sleep, ins, error, seconds);
-  unsigned int ret = Runtime::__sleep(ins, error, seconds);
-  BLOCK_TIMER_END(syncfunc::sleep, (uint64_t)ret);
-  return ret;
-#else
   struct timespec ts = {seconds, 0};
   SCHED_TIMER_START;
   // must call _S::getTurnCount with turn held
@@ -2274,19 +2214,11 @@ unsigned int RecorderRT<_S>::__sleep(unsigned ins, int &error, unsigned int seco
   if (options::exec_sleep)
     ::sleep(seconds);
   return 0;
-#endif
 }
 
 template <typename _S>
 int RecorderRT<_S>::__usleep(unsigned ins, int &error, useconds_t usec)
 {
-#ifdef XTERN_PLUS_DBUG
-  BLOCK_TIMER_START(usleep, ins, error, usec);
-  fprintf(stderr, "dbug usleep...\n");
-  unsigned int ret = Runtime::__usleep(ins, error, usec);
-  BLOCK_TIMER_END(syncfunc::usleep, (uint64_t)ret);
-  return ret;
-#else
   struct timespec ts = {0, 1000*usec};
   SCHED_TIMER_START;
   // must call _S::getTurnCount with turn held
@@ -2296,7 +2228,6 @@ int RecorderRT<_S>::__usleep(unsigned ins, int &error, useconds_t usec)
   if (options::exec_sleep)
     ::usleep(usec);
   return 0;
-#endif
 }
 
 template <typename _S>
@@ -2304,13 +2235,6 @@ int RecorderRT<_S>::__nanosleep(unsigned ins, int &error,
                               const struct timespec *req,
                               struct timespec *rem)
 {
-#ifdef XTERN_PLUS_DBUG
-  BLOCK_TIMER_START(nanosleep, ins, error, req, rem);
-  fprintf(stderr, "dbug nanosleep...\n");
-  unsigned int ret = Runtime::__nanosleep(ins, error, req, rem);
-  BLOCK_TIMER_END(syncfunc::nanosleep, (uint64_t)ret);
-  return ret;
-#else
  SCHED_TIMER_START;
    // must call _S::getTurnCount with turn held
   unsigned timeout = _S::getTurnCount() + relTimeToTurn(req);
@@ -2320,7 +2244,6 @@ int RecorderRT<_S>::__nanosleep(unsigned ins, int &error,
   if (options::exec_sleep)
     ::nanosleep(req, rem);
   return 0;
-#endif
 }
 
 template <typename _S>
