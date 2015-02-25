@@ -55,7 +55,6 @@ volatile int idle_done = 0;
 pthread_t idle_th;
 pthread_mutex_t idle_mutex;
 pthread_cond_t idle_cond;
-extern bool __thread attachedToDbug;
 
 typedef void * (*thread_func_t)(void*);
 static void *__tern_thread_func(void *arg) {

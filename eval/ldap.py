@@ -60,11 +60,8 @@ def evaluation(repeats = 100):
             proc.wait()
             os.chdir(root)
         # move log files into 'xtern' directory
-        try:
-            os.renames('%s/apps/ldap/openldap-2.4.33/obj/tests/out-bdb' % XTERN_ROOT, '%s/out.%d' % (out_dir, i))
-        except OSError:
-            pass
-
+        #os.renames('%s/apps/ldap/openldap-2.4.33/obj/tests/out-bdb' % XTERN_ROOT, '%s/out.%d' % (out_dir, i))
+        
     # non-det part
     cmd = ' '.join(['PRELOAD_LIB=%s/eval/rand-intercept/rand-intercept.so' % XTERN_ROOT, 'make', 'test'])
     out_dir = '%s/non-det' % root
@@ -78,7 +75,7 @@ def evaluation(repeats = 100):
             proc.wait()
             os.chdir(root)
         # move log files into 'xtern' directory
-        os.renames('%s/apps/ldap/openldap-2.4.33/obj/tests/out-bdb' % XTERN_ROOT, '%s/out.%d' % (out_dir, i))
+        #os.renames('%s/apps/ldap/openldap-2.4.33/obj/tests/out-bdb' % XTERN_ROOT, '%s/out.%d' % (out_dir, i))
 
     # restore
     os.unlink(local_options)
