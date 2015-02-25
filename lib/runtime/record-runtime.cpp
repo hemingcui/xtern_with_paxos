@@ -1869,8 +1869,8 @@ int RecorderRT<_S>::__accept4(unsigned ins, int &error, int sockfd, struct socka
 template <typename _S>
 int RecorderRT<_S>::__connect(unsigned ins, int &error, int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen)
 {
-  BLOCK_TIMER_START(connect, ins, error, sockfd, serv_addr, addrlen);
   int ret = Runtime::__connect(ins, error, sockfd, serv_addr, addrlen);
+  /*Don't need this code for now, because we do not need to schedule this operation.
   int from_port = 0;
   int to_port = 0;
   if (options::log_sync) {
@@ -1879,39 +1879,28 @@ int RecorderRT<_S>::__connect(unsigned ins, int &error, int sockfd, const struct
     socklen_t len = sizeof(cliaddr);
     getsockname(sockfd, (struct sockaddr *)&cliaddr, &len);
     to_port = cliaddr.sin_port;
-  }
-
-  BLOCK_TIMER_END(syncfunc::connect, (uint64_t) sockfd, (uint64_t) from_port, (uint64_t) to_port, (uint64_t) ret);
+  }*/
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__send(unsigned ins, int &error, int sockfd, const void *buf, size_t len, int flags)
 {
-  /* Even it is non-blocking operation, we use BLOCK_* instead of SCHED_*, 
-    because this operation can be involved by other systematic testing tools to 
-    explore non-deterministic order. */
-  BLOCK_TIMER_START(send, ins, error, sockfd, buf, len, flags);
   int ret = Runtime::__send(ins, error, sockfd, buf, len, flags);
-  BLOCK_TIMER_END(syncfunc::send, (uint64_t) ret);
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__sendto(unsigned ins, int &error, int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
 {
-  BLOCK_TIMER_START(sendto, ins, error, sockfd, buf, len, flags, dest_addr, addrlen);
   int ret = Runtime::__sendto(ins, error, sockfd, buf, len, flags, dest_addr, addrlen);
-  BLOCK_TIMER_END(syncfunc::sendto, (uint64_t) ret);
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__sendmsg(unsigned ins, int &error, int sockfd, const struct msghdr *msg, int flags)
 {
-  BLOCK_TIMER_START(sendmsg, ins, error, sockfd, msg, flags);
   int ret = Runtime::__sendmsg(ins, error, sockfd, msg, flags);
-  BLOCK_TIMER_END(syncfunc::sendmsg, (uint64_t) ret);
   return ret;
 }
 
@@ -1959,20 +1948,7 @@ ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size
 template <typename _S>
 ssize_t RecorderRT<_S>::__write(unsigned ins, int &error, int fd, const void *buf, size_t count)
 {
-  // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fd)) {
-    dprintf("RecorderRT<_S>::__write ignores regular file %d\n", fd);
-    return write(fd, buf, count);  // Directly call the libc write() for regular IO.
-  }
-
-  // Second, handle inter-process IO.
-  /* Even it is non-blocking operation, we use BLOCK_* instead of SCHED_*, 
-    because this operation can be involved by other systematic testing tools to 
-    explore non-deterministic order. */
-  BLOCK_TIMER_START(write, ins, error, fd, buf, count);
-  dprintf("RecorderRT<_S>::__write handles inter-process file %d\n", fd);
   ssize_t ret = Runtime::__write(ins, error, fd, buf, count);
-  BLOCK_TIMER_END(syncfunc::write, (uint64_t) fd, (uint64_t) ret);
   return ret;
 }
 
@@ -2007,14 +1983,7 @@ ssize_t RecorderRT<_S>::__pread(unsigned ins, int &error, int fd, void *buf, siz
 template <typename _S>
 ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *buf, size_t count, off_t offset)
 {
-  // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fd))
-    return pwrite(fd, buf, count, offset);  // Directly call the libc pwrite() for regular IO.
-
-  // Second, handle inter-process IO.
-  BLOCK_TIMER_START(pwrite, ins, error, fd, buf, count, offset);
   ssize_t ret = Runtime::__pwrite(ins, error, fd, buf, count, offset);
-  BLOCK_TIMER_END(syncfunc::pwrite, (uint64_t) fd, (uint64_t) ret);
   return ret;
 }
 
@@ -2039,18 +2008,14 @@ int RecorderRT<_S>::__epoll_wait(unsigned ins, int &error, int epfd, struct epol
 template <typename _S>
 int RecorderRT<_S>::__epoll_create(unsigned ins, int &error, int size)
 {  
-  BLOCK_TIMER_START(epoll_create, ins, error, size);
   int ret = Runtime::__epoll_create(ins, error, size);
-  BLOCK_TIMER_END(syncfunc::epoll_create, (uint64_t) ret);
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__epoll_ctl(unsigned ins, int &error, int epfd, int op, int fd, struct epoll_event *event)
 {  
-  BLOCK_TIMER_START(epoll_ctl, ins, error, epfd, op, fd, event);
   int ret = Runtime::__epoll_ctl(ins, error, epfd, op, fd, event);
-  BLOCK_TIMER_END(syncfunc::epoll_ctl, (uint64_t) ret);
   return ret;
 }
 
@@ -2066,9 +2031,7 @@ int RecorderRT<_S>::__poll(unsigned ins, int &error, struct pollfd *fds, nfds_t 
 template <typename _S>
 int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct sockaddr *address, socklen_t address_len)
 {
-  BLOCK_TIMER_START(bind, ins, error, socket, address, address_len);
   int ret = Runtime::__bind(ins, error, socket, address, address_len);
-  BLOCK_TIMER_END(syncfunc::bind, (uint64_t)socket, (uint64_t)address, (uint64_t)address_len, (uint64_t)ret);
   return ret;
 }
 
@@ -2098,9 +2061,7 @@ char *RecorderRT<_S>::__fgets(unsigned ins, int &error, char *s, int size, FILE 
 template <typename _S>
 int RecorderRT<_S>::__kill(unsigned ins, int &error, pid_t pid, int sig)
 {
-  BLOCK_TIMER_START(kill, ins, error, pid, sig);
   int ret = Runtime::__kill(ins, error, pid, sig);
-  BLOCK_TIMER_END(syncfunc::kill, (uint64_t)ret);
   return ret;
 }
 
@@ -2247,27 +2208,21 @@ int RecorderRT<_S>::__nanosleep(unsigned ins, int &error,
 template <typename _S>
 int RecorderRT<_S>::__socket(unsigned ins, int &error, int domain, int type, int protocol)
 {
-  BLOCK_TIMER_START(socket, ins, error, domain, type, protocol);
   int ret = Runtime::__socket(ins, error, domain, type, protocol);
-  BLOCK_TIMER_END(syncfunc::socket, (uint64_t)domain, (uint64_t)type, (uint64_t)protocol, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__listen(unsigned ins, int &error, int sockfd, int backlog)
 {
-  BLOCK_TIMER_START(listen, ins, error, sockfd, backlog);
   int ret = Runtime::__listen(ins, error, sockfd, backlog);
-  BLOCK_TIMER_END(syncfunc::listen, (uint64_t)sockfd, (uint64_t)backlog, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__shutdown(unsigned ins, int &error, int sockfd, int how)
 {
-  BLOCK_TIMER_START(shutdown, ins, error, sockfd, how);
   int ret = Runtime::__shutdown(ins, error, sockfd, how);
-  BLOCK_TIMER_END(syncfunc::shutdown, (uint64_t)ret);
   return ret;
 }
 
@@ -2281,9 +2236,7 @@ template <typename _S>
 int RecorderRT<_S>::__getsockopt(unsigned ins, int &error, int sockfd, int level, int optname,
                       void *optval, socklen_t *optlen)
 {
-  BLOCK_TIMER_START(getsockopt, ins, error, sockfd, level, optname, optval, optlen);
   int ret = Runtime::__getsockopt(ins, error, sockfd, level, optname, optval, optlen);
-  BLOCK_TIMER_END(syncfunc::getsockopt, (uint64_t)ret);
   return ret;
 }
 
@@ -2291,27 +2244,22 @@ template <typename _S>
 int RecorderRT<_S>::__setsockopt(unsigned ins, int &error, int sockfd, int level, int optname,
                       const void *optval, socklen_t optlen)
 {
-  BLOCK_TIMER_START(setsockopt, ins, error, sockfd, level, optname, optval, optlen);
   int ret = Runtime::__setsockopt(ins, error, sockfd, level, optname, optval, optlen);
-  BLOCK_TIMER_END(syncfunc::setsockopt, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__pipe(unsigned ins, int &error, int pipefd[2])
 {
-  BLOCK_TIMER_START(pipe, ins, error, pipefd);
+  fprintf(stderr, "\n\nPARROT WARN: pipes are not fully supported yet!\n\n");
   int ret = Runtime::__pipe(ins, error, pipefd);
-  BLOCK_TIMER_END(syncfunc::pipe, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__fcntl(unsigned ins, int &error, int fd, int cmd, void *arg)
 {
-  BLOCK_TIMER_START(fcntl, ins, error, fd, cmd, arg);
   int ret = Runtime::__fcntl(ins, error, fd, cmd, arg);
-  BLOCK_TIMER_END(syncfunc::fcntl, (uint64_t)ret);
   return ret;
 }
 
@@ -2319,14 +2267,7 @@ int RecorderRT<_S>::__fcntl(unsigned ins, int &error, int fd, int cmd, void *arg
 template <typename _S>
 int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
 {
-  // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fd))
-    return close(fd);  // Directly call the libc close() for regular IO.
-
-  // Second, handle inter-process IO.
-  BLOCK_TIMER_START(close, ins, error, fd);
   int ret = Runtime::__close(ins, error, fd);
-  BLOCK_TIMER_END(syncfunc::close, (uint64_t)fd, (uint64_t)ret);
   // For servers, print stat here, at this point it could be non-det but it is fine, network is non-det anyway.
   if (options::record_runtime_stat)
     stat.print();  
@@ -2395,9 +2336,7 @@ int RecorderRT<_S>::__settimeofday(unsigned ins, int &error, const struct timeva
 template <typename _S>
 struct hostent *RecorderRT<_S>::__gethostbyname(unsigned ins, int &error, const char *name)
 {
-  BLOCK_TIMER_START(gethostbyname, ins, error, name);
   struct hostent *ret = Runtime::__gethostbyname(ins, error, name);
-  BLOCK_TIMER_END(syncfunc::gethostbyname, (uint64_t)ret);
   return ret;
 }
 
@@ -2405,9 +2344,7 @@ template <typename _S>
 int RecorderRT<_S>::__gethostbyname_r(unsigned ins, int &error, const char *name, struct hostent *ret,
   char *buf, size_t buflen, struct hostent **result, int *h_errnop)
 {
-  BLOCK_TIMER_START(gethostbyname_r, ins, error, name, ret, buf, buflen, result, h_errnop);
   int ret2 = Runtime::__gethostbyname_r(ins, error, name, ret, buf, buflen, result, h_errnop);
-  BLOCK_TIMER_END(syncfunc::gethostbyname_r, (uint64_t)ret2);
   return ret2;
 }
 
@@ -2415,42 +2352,32 @@ template <typename _S>
 int RecorderRT<_S>::__getaddrinfo(unsigned ins, int &error, const char *node, const char *service, const struct addrinfo *hints,
 struct addrinfo **res)
 {
-  BLOCK_TIMER_START(getaddrinfo, ins, error, node, service, hints, res);
   int ret2 = Runtime::__getaddrinfo(ins, error, node, service, hints, res);
-  BLOCK_TIMER_END(syncfunc::getaddrinfo, (uint64_t)ret2);
   return ret2;
 }
 
 template <typename _S>
 void RecorderRT<_S>::__freeaddrinfo(unsigned ins, int &error, struct addrinfo *res)
 {
-  BLOCK_TIMER_START(freeaddrinfo, ins, error, res);
   Runtime::__freeaddrinfo(ins, error, res);
-  BLOCK_TIMER_END(syncfunc::freeaddrinfo, (uint64_t)ret2);
 }
 
 template <typename _S>
 struct hostent *RecorderRT<_S>::__gethostbyaddr(unsigned ins, int &error, const void *addr, int len, int type)
 {
-  BLOCK_TIMER_START(gethostbyaddr, ins, error, addr, len, type);
   struct hostent *ret = Runtime::__gethostbyaddr(ins, error, addr, len, type);
-  BLOCK_TIMER_END(syncfunc::gethostbyaddr, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 char *RecorderRT<_S>::__inet_ntoa(unsigned ins, int &error, struct in_addr in) {
-  BLOCK_TIMER_START(inet_ntoa, ins, error, in);
   char * ret = Runtime::__inet_ntoa(ins, error, in);
-  BLOCK_TIMER_END(syncfunc::inet_ntoa, (uint64_t)ret);
   return ret;
 }
 
 template <typename _S>
 char *RecorderRT<_S>::__strtok(unsigned ins, int &error, char * str, const char * delimiters) {
-  BLOCK_TIMER_START(strtok, ins, error, str, delimiters);
   char * ret = Runtime::__strtok(ins, error, str, delimiters);
-  BLOCK_TIMER_END(syncfunc::strtok, (uint64_t)ret);
   return ret;
 }
 
