@@ -66,6 +66,7 @@
 #include "tern/options.h"
 #include "tern/hooks.h"
 #include "tern/runtime/rdtsc.h"
+#include "tern/runtime/paxos-op-queue.h"
 
 #include <fstream>
 #include <map>
