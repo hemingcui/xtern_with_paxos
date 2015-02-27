@@ -25,6 +25,9 @@
 #include <pthread.h>
 #include <assert.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <semaphore.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -35,29 +38,37 @@
 #define DELTA 100 // TBD: don't know why we couldn't get 100% of the shared mem.
 #define SEG_NAME "PAXOS_OP_QUEUE"
 #define CB_NAME "CIRCULAR_BUFFER"
+#define SEM_NAME "/PAXOS_SEM"
 #define DEBUG_PAXOS_OP_QUEUE
 
+
+namespace tern {
+  enum PAXOS_OP_TYPE {
+    CONNECT,
+    SEND,
+    CLOSE
+  };
+  
   struct paxos_op {
     uint64_t connection_id;
     uint64_t counter;
+    PAXOS_OP_TYPE type;
 
-    paxos_op(uint64_t id, uint64_t cnt) {
+    paxos_op(uint64_t id, uint64_t cnt, PAXOS_OP_TYPE t) {
       connection_id = id;
       counter = cnt;
+      type = t;
     }
-  };
+  };  
 
-namespace bip = boost::interprocess;
-typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> ShmemAllocatorCB;
-typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
-
-namespace tern
-{
-  
+  namespace bip = boost::interprocess;
+  typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> ShmemAllocatorCB;
+  typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
 
   class paxos_op_queue {
   private:
     MyCircularBuffer *circbuff;
+    sem_t *sem;
     
   public:
     paxos_op_queue() {
@@ -71,15 +82,28 @@ namespace tern
 #else
       bip::shared_memory_object::remove(SEG_NAME);
 #endif
-      bip::managed_shared_memory segment(bip::create_only, SEG_NAME, ELEM_CAPACITY*sizeof(paxos_op));
+      bip::managed_shared_memory segment(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
       const ShmemAllocatorCB alloc_inst (segment.get_segment_manager());
-      circbuff = segment.construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY-DELTA, alloc_inst);
+      circbuff = segment.construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY, alloc_inst);
       test();
+
+      // 1 means this is a binary semaphore, or a mutex.
+      sem = sem_open(SEM_NAME, O_CREAT|O_EXCL, 0644, 1); 
+      if (sem == SEM_FAILED) {
+        std::cout << "Semaphore " << SEM_NAME " already exists, errno " << errno << ".\n";
+        exit(1);
+      }
+      sem_unlink(SEM_NAME);
     }
 
     void open_shared_mem() {
       bip::managed_shared_memory segment(bip::open_only, SEG_NAME);
       circbuff = segment.find<MyCircularBuffer>(CB_NAME).first;
+      sem = sem_open(SEM_NAME, 1);
+      if (sem == SEM_FAILED) {
+        std::cout << "Semaphore " << SEM_NAME " does not exist, errno " << errno << ".\n";
+        exit(1);
+      }
     }
 
     virtual ~paxos_op_queue() {
@@ -89,37 +113,62 @@ namespace tern
 #endif
     }
 
-    void push_back(uint64_t conn_id, uint64_t counter) {
-      paxos_op op(conn_id, counter); // TBD: is this OK for IPC shared-memory?
+    void push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
+      if (size() == ELEM_CAPACITY) {
+        std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+        exit(1);
+      }
+      //lock();
+      paxos_op op(conn_id, counter, t); // TBD: is this OK for IPC shared-memory?
       circbuff->push_back(op);      
+      //unlock();
     }
 
-    paxos_op& front() {
-      return circbuff->front();      
+    paxos_op front() {
+      //lock();
+      return circbuff->front();
+      //unlock();
+      //return op;    
     }
 
     paxos_op pop_front() {
+      //lock();
       paxos_op op = front();
       circbuff->pop_front();
+      //unlock();
       return op;
     }
 
     size_t size() {
-      return circbuff->size();      
+      //lock();
+      size_t t = circbuff->size();
+      //unlock();
+      return t;       
     }
 
+    void lock() {
+      sem_wait(sem);  
+    }
+
+    void unlock() {
+      sem_post(sem);  
+    }
+
+  protected:
     void test() {
 #ifdef DEBUG_PAXOS_OP_QUEUE
       std::cout << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
       for (int i = 0; i < ELEM_CAPACITY*2+123; i++) {
-        paxos_op op(i, i);
+        paxos_op op(i, i, SEND);
         circbuff->push_back(op);
+        //push_back(i, i, SEND); This code will trigger the circular buffer 
+        // full exit, which is good.
       }
       std::cout << "Circular Buffer Size after push_back: " << circbuff->size() << "\n";
 
       for (int i = 0; i < 10; i++) {
         std::cout << "Child got: " << (*circbuff)[i].connection_id
-          << ", " << (*circbuff)[i].counter << "\n";
+          << ", " << (*circbuff)[i].counter << ", " << (*circbuff)[i].type << "\n";
       }
 
       paxos_op op0 = front();
