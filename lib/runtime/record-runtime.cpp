@@ -240,6 +240,8 @@ int RecorderRT<_S>::relTimeToTurn(const struct timespec *reltime)
 
 template <typename _S>
 void RecorderRT<_S>::progBegin(void) {
+  tern::paxos_op_queue poq;
+  poq.create_shared_mem();
   Logger::progBegin();
 }
 
