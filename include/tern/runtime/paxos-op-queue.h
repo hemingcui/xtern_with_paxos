@@ -23,44 +23,41 @@
 extern "C" {
 #endif
 
-  typedef enum {
-    CONNECT = 0,
-    SEND,
-    CLOSE
-  } PAXOS_OP_TYPE;
 
-  typedef struct {
-    uint64_t connection_id;
-    uint64_t counter;
-    PAXOS_OP_TYPE type;
-  } paxos_op;  
+typedef enum {
+  CONNECT = 0,
+  SEND,
+  CLOSE
+} PAXOS_OP_TYPE;
 
-  void conns_init();
-  uint64_t conns_get_conn_id(int server_sock);
-  int conns_get_server_sock(uint64_t conn_id);
-  void conns_erase_by_conn_id(uint64_t conn_id);
-  void conns_add_pair(uint64_t conn_id, int server_sock);
-  size_t conns_get_num_conn();
 
-   void paxq_create_shared_mem();
-    void paxq_open_shared_mem(int node_id);
-    void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t);
-    paxos_op paxq_front();
-    paxos_op paxq_pop_front();
-    size_t paxq_size();
-    void paxq_lock();
-    void paxq_unlock();
-    void paxq_test();
+typedef struct {
+  uint64_t connection_id;
+  uint64_t counter;
+  PAXOS_OP_TYPE type;
+} paxos_op;  
 
-  /*struct paxos_sched {
-    unsigned numThdsWaitSockOp;
-    proxy_server_sock_pair conns;
-    paxos_op_queue paxos_queue;
 
-    paxos_sched() {
-      numThdsWaitSockOp = 0;
-    }
-  };*/
+/// APIs for the proxy-server two-way mapping connections.
+void conns_init();
+uint64_t conns_get_conn_id(int server_sock);
+int conns_get_server_sock(uint64_t conn_id);
+void conns_erase_by_conn_id(uint64_t conn_id);
+void conns_add_pair(uint64_t conn_id, int server_sock);
+size_t conns_get_num_conn();
+
+
+/// APIs for the proxy-server paxos operation queue.
+void paxq_create_shared_mem();
+void paxq_open_shared_mem(int node_id);
+void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t);
+paxos_op paxq_front();
+paxos_op paxq_pop_front();
+size_t paxq_size();
+void paxq_lock();
+void paxq_unlock();
+void paxq_test();
+
 
 #ifdef __cplusplus
 }
