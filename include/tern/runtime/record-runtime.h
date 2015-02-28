@@ -192,7 +192,7 @@ struct RecorderRT: public Runtime, public _Scheduler {
     assert(!ret && "can't initialize semaphore!");
 
     /// Schedule with paxos queue in the proxy process. 
-    paxos_queue.create_shared_mem();
+    paxq_create_shared_mem();
     num_threads_wait_sock = 0;
   }
 
@@ -227,8 +227,6 @@ protected:
 
 
   /// Schedule with paxos queue in the proxy process.
-  tern::paxos_op_queue paxos_queue;
-  tern::proxy_server_sock_pair conns_with_proxy;
   unsigned num_threads_wait_sock;
   void schedSocketOp(bool isBlockSockOp = false);
 
