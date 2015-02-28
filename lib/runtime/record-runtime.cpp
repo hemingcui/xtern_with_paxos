@@ -66,7 +66,6 @@
 #include "tern/options.h"
 #include "tern/hooks.h"
 #include "tern/runtime/rdtsc.h"
-#include "tern/runtime/paxos-op-queue.h"
 
 #include <fstream>
 #include <map>
@@ -240,8 +239,6 @@ int RecorderRT<_S>::relTimeToTurn(const struct timespec *reltime)
 
 template <typename _S>
 void RecorderRT<_S>::progBegin(void) {
-  tern::paxos_op_queue poq;
-  poq.create_shared_mem();
   Logger::progBegin();
 }
 
@@ -279,12 +276,6 @@ void RecorderRT<_S>::idle_cond_wait(void) {
     _S::putTurn();
 }
 
-/*
-template <>
-void RecorderRT<RecordSerializer>::idle_sleep(void) {
-  ::usleep(10);
-}
-*/
 
 #define BLOCK_TIMER_START(sync_op, ...) \
   if (options::record_runtime_stat) \
@@ -308,7 +299,8 @@ void RecorderRT<RecordSerializer>::idle_sleep(void) {
   errno = backup_errno;
   //fprintf(stderr, "\n\nBLOCK_TIMER_END pid %d, self %u, tid %d, turnCount %u, function %s\n", getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
-#define SCHED_TIMER_START \
+
+#define SCHED_TIMER_START_COMMON \
   unsigned nturn; \
   if (options::enforce_non_det_annotations) \
      assert(!inNonDet); \
@@ -317,10 +309,17 @@ void RecorderRT<RecordSerializer>::idle_sleep(void) {
   _S::getTurn(); \
   record_rdtsc_op("GET_TURN", "END", 2, NULL); \
   if (options::record_runtime_stat && pthread_self() != idle_th) \
-     stat.nDetPthreadSyncOp++; \
+    stat.nDetPthreadSyncOp++;
+
+
+#define SCHED_TIMER_START \
+  SCHED_TIMER_START_COMMON; \
+  if (options::sched_with_paxos) \
+    schedSocketOp(); \
   timespec sched_time = update_time();
   //if (_S::self() != 1)
     //fprintf(stderr, "\n\nSCHED_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+
 
 #define SCHED_TIMER_END_COMMON(syncop, ...) \
   int backup_errno = errno; \
@@ -329,6 +328,7 @@ void RecorderRT<RecordSerializer>::idle_sleep(void) {
   if (options::log_sync) \
     Logger::the->logSync(ins, (syncop), nturn = _S::getTurnCount(), app_time, syscall_time, sched_time, true, __VA_ARGS__);
    
+
 #define SCHED_TIMER_END(syncop, ...) \
   SCHED_TIMER_END_COMMON(syncop, __VA_ARGS__); \
   _S::putTurn();\
@@ -336,16 +336,37 @@ void RecorderRT<RecordSerializer>::idle_sleep(void) {
   //if (_S::self() != 1)
     //fprintf(stderr, "\n\nSCHED_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
+
+// SOCKET_TIMER_START is the same as SCHED_TIMER_START except schedSocketOp(true).
+#define SOCKET_TIMER_START \
+  SCHED_TIMER_START_COMMON; \
+  schedSocketOp(true); \
+  timespec sched_time = update_time();
+  //if (_S::self() != 1)
+    //fprintf(stderr, "\n\nSOCKET_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+
+
+// SOCKET_TIMER_END is the same as SCHED_TIMER_END.
+#define SOCKET_TIMER_END(syncop, ...) \
+  SCHED_TIMER_END_COMMON(syncop, __VA_ARGS__); \
+  _S::putTurn();\
+  errno = backup_errno;
+  //if (_S::self() != 1)
+    //fprintf(stderr, "\n\nSOCKET_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+
+
 #define SCHED_TIMER_THREAD_END(syncop, ...) \
   SCHED_TIMER_END_COMMON(syncop, __VA_ARGS__); \
   _S::putTurn(true);\
   errno = backup_errno; 
   
+
 #define SCHED_TIMER_FAKE_END(syncop, ...) \
   nturn = _S::incTurnCount(); \
   timespec fake_time = update_time(); \
   if (options::log_sync) \
     Logger::the->logSync(ins, syncop, nturn, app_time, fake_time, sched_time, /* before */ false, __VA_ARGS__); 
+
 
 template <typename _S>
 void RecorderRT<_S>::printStat(){
@@ -1839,6 +1860,12 @@ bool RecorderRT<_S>::regularFile(int fd) {
   fstat(fd, &st);
   // If it is neither a socket, nor a fifo, then it is regular file (not a inter-process communication media).
   return ((S_IFSOCK != (st.st_mode & S_IFMT)) && (S_IFIFO != (st.st_mode & S_IFMT)));
+}
+
+template <typename _S>
+void RecorderRT<_S>::schedSocketOp(bool isBlockSockOp) {
+  //TBD.
+  
 }
 
 template <typename _S>

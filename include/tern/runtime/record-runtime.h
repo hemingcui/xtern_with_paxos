@@ -27,6 +27,7 @@
 #include "tern/runtime/record-scheduler.h"
 #include "runtime-stat.h"
 #include <time.h>
+#include "tern/runtime/paxos-op-queue.h"
 
 namespace tern {
 
@@ -189,6 +190,10 @@ struct RecorderRT: public Runtime, public _Scheduler {
     assert(!ret && "can't initialize semaphore!");
     ret = sem_init(&thread_begin_done_sem, 0, 0);
     assert(!ret && "can't initialize semaphore!");
+
+    /// Schedule with paxos queue in the proxy process. 
+    paxos_queue.create_shared_mem();
+    num_threads_wait_sock = 0;
   }
 
   ~RecorderRT() {
@@ -220,6 +225,14 @@ protected:
   sem_t thread_begin_sem;
   sem_t thread_begin_done_sem;
 
+
+  /// Schedule with paxos queue in the proxy process.
+  tern::paxos_op_queue paxos_queue;
+  tern::proxy_server_sock_pair conns_with_proxy;
+  unsigned num_threads_wait_sock;
+  void schedSocketOp(bool isBlockSockOp = false);
+
+  /// Stats.
   RuntimeStat stat;
 };
 } // namespace tern
