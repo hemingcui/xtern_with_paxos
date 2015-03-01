@@ -175,7 +175,7 @@ void paxq_test() {
 #ifdef DEBUG_PAXOS_OP_QUEUE
   std::cout << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
   for (int i = 0; i < ELEM_CAPACITY*2+123; i++) {
-    paxos_op op = {i, i, SEND};
+    paxos_op op = {i, i, PAXQ_SEND};
     circbuff->push_back(op);
     //push_back(i, i, SEND); This code will trigger the circular buffer 
     // full exit, which is good.

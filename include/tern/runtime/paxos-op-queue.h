@@ -25,9 +25,9 @@ extern "C" {
 
 
 typedef enum {
-  CONNECT = 0,
-  SEND,
-  CLOSE
+  PAXQ_CONNECT = 0,
+  PAXQ_SEND,
+  PAXQ_CLOSE
 } PAXOS_OP_TYPE;
 
 
