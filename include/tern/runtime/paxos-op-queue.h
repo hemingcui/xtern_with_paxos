@@ -57,7 +57,7 @@ size_t paxq_size();
 void paxq_lock();
 void paxq_unlock();
 void paxq_test();
-
+void paxq_print();
 
 #ifdef __cplusplus
 }

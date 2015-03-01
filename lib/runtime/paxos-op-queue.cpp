@@ -17,18 +17,20 @@
 #include <boost/circular_buffer.hpp>
 
 #include "tern/runtime/paxos-op-queue.h"
-//using namespace tern;
+
 
 #define ELEM_CAPACITY 10000
 #define DELTA 100 // TBD: don't know why we couldn't get 100% of the shared mem.
 #define SEG_NAME "PAXOS_OP_QUEUE"
 #define CB_NAME "CIRCULAR_BUFFER"
 #define SEM_NAME "/PAXOS_SEM"
-#define DEBUG_PAXOS_OP_QUEUE
+//#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+using namespace std;
 
 /** TBD: CURRENT WE ASSUME THE SERVER HAS ONLY ONE PROCESS TALKING TO THE PROXY.
 IF THE SERVER HAVE MULTIPLE PROCESSES AND EACH OF THEM THEY CONNECT TO  
@@ -91,8 +93,9 @@ size_t conns_get_num_conn() {
 namespace bip = boost::interprocess;
 typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> ShmemAllocatorCB;
 typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
-MyCircularBuffer *circbuff;
-sem_t *sem;
+bip::managed_shared_memory *segment = NULL;
+MyCircularBuffer *circbuff = NULL;
+sem_t *sem = NULL;
     
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
@@ -105,28 +108,28 @@ void paxq_create_shared_mem() {
   // TBD: must pass the PROXY_NODE_ID env var.
   // TBD.
 
-  bip::managed_shared_memory segment(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
-  const ShmemAllocatorCB alloc_inst (segment.get_segment_manager());
-  circbuff = segment.construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY, alloc_inst);
+  segment = new bip::managed_shared_memory(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
+  static const ShmemAllocatorCB alloc_inst (segment->get_segment_manager());
+  circbuff = segment->construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY, alloc_inst);
   paxq_test();
 
   // 1 means this is a binary semaphore, or a mutex.
-  sem = sem_open(SEM_NAME, O_CREAT|O_EXCL, 0644, 1); 
+  sem = sem_open(SEM_NAME, O_CREAT, 0600, 1); 
   if (sem == SEM_FAILED) {
-    std::cout << "Semaphore " << SEM_NAME " already exists, errno " << errno << ".\n";
-    exit(1);
+    std::cout << "paxq_create_shared_memory semaphore " << SEM_NAME " open failed, errno " << errno << ".\n";
+     exit(1);
   }
-  sem_unlink(SEM_NAME);
 }
 
 /** This function is called by the proxy, because the eval.py starts the proxy after the server. . **/
 void paxq_open_shared_mem(int node_id) {
-  bip::managed_shared_memory segment(bip::open_only, SEG_NAME);
-  circbuff = segment.find<MyCircularBuffer>(CB_NAME).first;
-  sem = sem_open(SEM_NAME, 1);
+  segment = new bip::managed_shared_memory(bip::open_only, SEG_NAME);
+  circbuff = segment->find<MyCircularBuffer>(CB_NAME).first;
+  // 1 means this is a binary semaphore, or a mutex.
+  sem = sem_open(SEM_NAME, O_CREAT, 0600, 1); 
   if (sem == SEM_FAILED) {
-    std::cout << "Semaphore " << SEM_NAME " does not exist, errno " << errno << ".\n";
-    exit(1);
+    std::cout << "paxq_open_shared_mem semaphore " << SEM_NAME " open failed, errno " << errno << ".\n";
+     exit(1);
   }
 }
 
@@ -138,6 +141,7 @@ void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
   //lock();
   paxos_op op = {conn_id, counter, t}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
+  std::cout << "paxq_push_back, now size " << paxq_size() << "\n";
   //unlock();
 }
 
@@ -203,6 +207,20 @@ void paxq_test() {
       << ", " << (*circbuff)[i].counter << "\n";
   }  
 #endif
+}
+
+void paxq_print() {
+  if (paxq_size() == 0)
+    return;
+  //boost::circular_buffer::iterator itr = circbuff->begin();
+  //std::cout << "paxq_print circbuff now " << circbuff << ", pself " << pthread_self() << std::endl;
+  const char *op_type[3] = {"CONNECT", "SEND", "CLOSE"};
+  std::cout << "paxq_print size " << paxq_size() << std::endl;
+  for (size_t i = 0; i < paxq_size(); i++) {
+    paxos_op &op = (*circbuff)[i];
+    std::cout << "paxq_print [" << i << "]: (" << op.connection_id
+    << ", " << op.counter << ", " << op_type[op.type] << ")\n";
+  }
 }
 
 #ifdef __cplusplus
