@@ -6,10 +6,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <tr1/unordered_map>
 #include <stdlib.h>
-#include <semaphore.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -23,7 +23,7 @@
 #define DELTA 100 // TBD: don't know why we couldn't get 100% of the shared mem.
 #define SEG_NAME "PAXOS_OP_QUEUE"
 #define CB_NAME "CIRCULAR_BUFFER"
-#define SEM_NAME "/PAXOS_SEM"
+#define LOCK_FILE_NAME "/tmp/paxos_queue_file_lock"
 //#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
@@ -101,7 +101,7 @@ typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> Sh
 typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
 bip::managed_shared_memory *segment = NULL;
 MyCircularBuffer *circbuff = NULL;
-sem_t *sem = NULL;
+int lockFileFd = 0;
     
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
@@ -121,11 +121,10 @@ void paxq_create_shared_mem() {
   assert(circbuff->size() == 0);
   paxq_print();
 
-  // 1 means this is a binary semaphore, or a mutex.
-  sem = sem_open(SEM_NAME, O_CREAT, 0600, 1); 
-  if (sem == SEM_FAILED) {
-    std::cout << "paxq_create_shared_memory semaphore " << SEM_NAME " open failed, errno " << errno << ".\n";
-     exit(1);
+  lockFileFd = open(LOCK_FILE_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  if (lockFileFd == -1) {
+    std::cout << "paxq_create_shared_memory file lock " << LOCK_FILE_NAME " open failed, errno " << errno << ".\n";
+    exit(1);
   }
 }
 
@@ -133,28 +132,25 @@ void paxq_create_shared_mem() {
 void paxq_open_shared_mem(int node_id) {
   segment = new bip::managed_shared_memory(bip::open_only, SEG_NAME);
   circbuff = segment->find<MyCircularBuffer>(CB_NAME).first;
-  // 1 means this is a binary semaphore, or a mutex.
-  sem = sem_open(SEM_NAME, O_CREAT, 0600, 1); 
-  if (sem == SEM_FAILED) {
-    std::cout << "paxq_open_shared_mem semaphore " << SEM_NAME " open failed, errno " << errno << ".\n";
-     exit(1);
+  lockFileFd = open(LOCK_FILE_NAME, O_RDWR, S_IRUSR | S_IWUSR);
+  if (lockFileFd == -1) {
+    std::cout << "paxq_open_shared_memory file lock " << LOCK_FILE_NAME " open failed, errno " << errno << ".\n";
+    exit(1);
   }
 }
 
 void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
-  //paxq_lock();
+  paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
     std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
-    //paxq_unlock();
+    paxq_unlock();
     exit(1);
   }
-  //lock();
   paxos_op op = {conn_id, counter, t}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
-  //paxq_unlock();
   std::cout << "paxq_push_back, now size " << paxq_size() << "\n";
   paxq_print();
-  //unlock();
+  paxq_unlock();
 }
 
 paxos_op paxq_front() {
@@ -180,11 +176,11 @@ size_t paxq_size() {
 }
 
 void paxq_lock() {
-  sem_wait(sem);  
+  lockf(lockFileFd, F_LOCK, 0);
 }
 
 void paxq_unlock() {
-  sem_post(sem);  
+  lockf(lockFileFd, F_ULOCK, 0);
 }
 
 void paxq_test() {
