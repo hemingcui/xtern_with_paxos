@@ -1865,7 +1865,9 @@ bool RecorderRT<_S>::regularFile(int fd) {
 template <typename _S>
 void RecorderRT<_S>::schedSocketOp(bool isBlockSockOp) {
   //TBD.
+  //paxq_lock();
   paxq_print();
+  //paxq_unlock();
 }
 
 template <typename _S>

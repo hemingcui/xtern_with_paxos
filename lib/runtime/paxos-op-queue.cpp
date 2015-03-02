@@ -32,6 +32,12 @@ extern "C" {
 
 using namespace std;
 
+#ifdef DEBUG_PAXOS_OP_QUEUE
+#define PRINT std::cout
+#else
+#define PRINT if (false) std::cout
+#endif
+
 /** TBD: CURRENT WE ASSUME THE SERVER HAS ONLY ONE PROCESS TALKING TO THE PROXY.
 IF THE SERVER HAVE MULTIPLE PROCESSES AND EACH OF THEM THEY CONNECT TO  
 THE PROXY, THE PAXOS_OP NEEDS TO HAVE A PID FIELD. OR WE NEED TO SEPARATE THE 
@@ -111,7 +117,9 @@ void paxq_create_shared_mem() {
   segment = new bip::managed_shared_memory(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
   static const ShmemAllocatorCB alloc_inst (segment->get_segment_manager());
   circbuff = segment->construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY, alloc_inst);
-  paxq_test();
+  circbuff->clear();
+  assert(circbuff->size() == 0);
+  paxq_print();
 
   // 1 means this is a binary semaphore, or a mutex.
   sem = sem_open(SEM_NAME, O_CREAT, 0600, 1); 
@@ -133,15 +141,19 @@ void paxq_open_shared_mem(int node_id) {
   }
 }
 
-void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
+void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
+  //paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
     std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+    //paxq_unlock();
     exit(1);
   }
   //lock();
   paxos_op op = {conn_id, counter, t}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
+  //paxq_unlock();
   std::cout << "paxq_push_back, now size " << paxq_size() << "\n";
+  paxq_print();
   //unlock();
 }
 
