@@ -286,7 +286,7 @@ void RecorderRT<_S>::idle_cond_wait(void) {
   if (_S::interProStart()) { \
     _S::block(); \
   }
-  //fprintf(stderr, "\n\nBLOCK_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  //fprintf(stderr, "\n\nBLOCK_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 // At this moment, since self-thread is ahead of the run queue, so this block() should be very fast.
 // TBD: do we need logging here? We can, but not sure whether we need to do this.
 
@@ -315,10 +315,10 @@ void RecorderRT<_S>::idle_cond_wait(void) {
 #define SCHED_TIMER_START \
   SCHED_TIMER_START_COMMON; \
   if (options::sched_with_paxos) \
-    schedSocketOp(); \
+    schedSocketOp(__FUNCTION__, DMT_REG_SYNC); \
   timespec sched_time = update_time();
   //if (_S::self() != 1)
-    //fprintf(stderr, "\n\nSCHED_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+    //fprintf(stderr, "\n\nSCHED_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 #define SCHED_TIMER_END_COMMON(syncop, ...) \
@@ -334,25 +334,36 @@ void RecorderRT<_S>::idle_cond_wait(void) {
   _S::putTurn();\
   errno = backup_errno;
   //if (_S::self() != 1)
-    //fprintf(stderr, "\n\nSCHED_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+    //fprintf(stderr, "\n\nSCHED_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 // SOCKET_TIMER_START is the same as SCHED_TIMER_START except schedSocketOp(true).
+#define SOCKET_TIMER_DECL \
+  timespec app_time; \
+  timespec sched_time; \
+  unsigned nturn;
+
 #define SOCKET_TIMER_START \
-  SCHED_TIMER_START_COMMON; \
-  schedSocketOp(true); \
-  timespec sched_time = update_time();
-  //if (_S::self() != 1)
-    //fprintf(stderr, "\n\nSOCKET_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  if (options::enforce_non_det_annotations) \
+     assert(!inNonDet); \
+  app_time = update_time(); \
+  record_rdtsc_op("GET_TURN", "START", 2, NULL); \
+  _S::getTurn(); \
+  record_rdtsc_op("GET_TURN", "END", 2, NULL); \
+  if (options::record_runtime_stat && pthread_self() != idle_th) \
+    stat.nDetPthreadSyncOp++; \
+  sched_time = update_time(); \
+  if (_S::self() != 1) \
+    fprintf(stderr, "\n\nSOCKET_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 // SOCKET_TIMER_END is the same as SCHED_TIMER_END.
 #define SOCKET_TIMER_END(syncop, ...) \
   SCHED_TIMER_END_COMMON(syncop, __VA_ARGS__); \
   _S::putTurn();\
-  errno = backup_errno;
-  //if (_S::self() != 1)
-    //fprintf(stderr, "\n\nSOCKET_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  errno = backup_errno; \
+  if (_S::self() != 1) \
+    fprintf(stderr, "\n\nSOCKET_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 #define SCHED_TIMER_THREAD_END(syncop, ...) \
@@ -536,6 +547,7 @@ template <typename _S>
 int RecorderRT<_S>::__pthread_detach(unsigned insid, int &error, pthread_t th) {
   BLOCK_TIMER_START(pthread_detach, insid, error, th);
   int ret = Runtime::__pthread_detach(insid, error, th);
+  fprintf(stderr, "WARN: Crane has not supported deterministic pthread_detach yet.");
   BLOCK_TIMER_END(syncfunc::pthread_detach, (uint64_t)ret);
   return ret;
 }
@@ -1855,6 +1867,13 @@ int RecorderRT<RecordSerializer>::pthreadCondBroadcast(unsigned ins, int &error,
 }
 
 template <typename _S>
+bool RecorderRT<_S>::socketFd(int fd) {
+  struct stat st;
+  fstat(fd, &st);
+  return ((st.st_mode & S_IFMT) == S_IFSOCK);
+}
+
+template <typename _S>
 bool RecorderRT<_S>::regularFile(int fd) {
   struct stat st;
   fstat(fd, &st);
@@ -1863,17 +1882,16 @@ bool RecorderRT<_S>::regularFile(int fd) {
 }
 
 template <typename _S>
-void RecorderRT<_S>::schedSocketOp(bool isBlockSockOp) {
-  //TBD.
-  paxq_lock();
-  paxq_print();
-  paxq_unlock();
-}
-
-template <typename _S>
 int RecorderRT<_S>::__accept(unsigned ins, int &error, int sockfd, struct sockaddr *cliaddr, socklen_t *addrlen)
 {
-  BLOCK_TIMER_START(accept, ins, error, sockfd, cliaddr, addrlen);
+  SOCKET_TIMER_DECL;
+  paxos_op op = {0, 0, PAXQ_INVALID, 0};
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(accept, ins, error, sockfd, cliaddr, addrlen);
+  } else {
+    SOCKET_TIMER_START;
+    op = schedSocketOp(__FUNCTION__, DMT_ACCEPT, sockfd);
+  }
   int ret = Runtime::__accept(ins, error, sockfd, cliaddr, addrlen);
   int from_port = 0;
   int to_port = 0;
@@ -1884,17 +1902,39 @@ int RecorderRT<_S>::__accept(unsigned ins, int &error, int sockfd, struct sockad
     getsockname(sockfd, (struct sockaddr *)&servaddr, &len);
     from_port = servaddr.sin_port;
   }
-
-  BLOCK_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
+  } else {
+    fprintf(stderr, "Server thread pself %u tid %d accepted socket %d\n",
+      (unsigned)pthread_self(), _S::self(), ret);
+    // this code should be put at after accept() is returned so that we can get the conns mapping.
+    assert (op.type == PAXQ_CONNECT && ret != -1);
+    conns_add_pair(op.connection_id, ret);
+    SOCKET_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
+  }
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__accept4(unsigned ins, int &error, int sockfd, struct sockaddr *cliaddr, socklen_t *addrlen, int flags)
 {
-  BLOCK_TIMER_START(accept4, ins, error, sockfd, cliaddr, addrlen, flags);
+  SOCKET_TIMER_DECL;
+  paxos_op op = {0, 0, PAXQ_INVALID, 0};
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(accept4, ins, error, sockfd, cliaddr, addrlen, flags);
+  } else {
+    SOCKET_TIMER_START;
+    op = schedSocketOp(__FUNCTION__, DMT_ACCEPT, sockfd);
+  }
   int ret = Runtime::__accept4(ins, error, sockfd, cliaddr, addrlen, flags);
-  BLOCK_TIMER_END(syncfunc::accept4, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::accept4, (uint64_t) ret);
+  } else {
+    // this code should be put at after accept() is returned so that we can get the conns mapping.
+    assert (op.type == PAXQ_CONNECT && ret != -1);
+    conns_add_pair(op.connection_id, ret);
+    SOCKET_TIMER_END(syncfunc::accept4, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -1939,27 +1979,59 @@ ssize_t RecorderRT<_S>::__sendmsg(unsigned ins, int &error, int sockfd, const st
 template <typename _S>
 ssize_t RecorderRT<_S>::__recv(unsigned ins, int &error, int sockfd, void *buf, size_t len, int flags)
 {
-  BLOCK_TIMER_START(recv, ins, error, sockfd, buf, len, flags);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(recv, ins, error, sockfd, buf, len, flags);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+  }
   ssize_t ret = Runtime::__recv(ins, error, sockfd, buf, len, flags);
-  BLOCK_TIMER_END(syncfunc::recv, (uint64_t) ret);
+  fprintf(stderr, "Server thread pself %u tid %d recv %u bytes (up to %u bytes) from socket %d\n",
+    (unsigned)pthread_self(), _S::self(), (unsigned)ret, (unsigned)len, sockfd);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::recv, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::recv, (uint64_t) ret);
+  }
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__recvfrom(unsigned ins, int &error, int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
-  BLOCK_TIMER_START(recvfrom, ins, error, sockfd, buf, len, flags, src_addr, addrlen);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(recvfrom, ins, error, sockfd, buf, len, flags, src_addr, addrlen);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+  }
   ssize_t ret = Runtime::__recvfrom(ins, error, sockfd, buf, len, flags, src_addr, addrlen);
-  BLOCK_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
+  }
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__recvmsg(unsigned ins, int &error, int sockfd, struct msghdr *msg, int flags)
 {
-  BLOCK_TIMER_START(recvmsg, ins, error, sockfd, msg, flags);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(recvmsg, ins, error, sockfd, msg, flags);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+  }
   ssize_t ret = Runtime::__recvmsg(ins, error, sockfd, msg, flags);
-  BLOCK_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -1967,13 +2039,23 @@ template <typename _S>
 ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size_t count)
 {
   // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fd))
+  if (options::RR_ignore_rw_regular_file && !socketFd(fd))
     return read(fd, buf, count);  // Directly call the libc read() for regular IO.
 
+  SOCKET_TIMER_DECL;
   // Second, handle inter-process IO.
-  BLOCK_TIMER_START(read, ins, error, fd, buf, count);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(read, ins, error, fd, buf, count);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+  }
   ssize_t ret = Runtime::__read(ins, error, fd, buf, count);
-  BLOCK_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -1988,13 +2070,24 @@ template <typename _S>
 size_t RecorderRT<_S>::__fread(unsigned ins, int &error, void * ptr, size_t size, size_t count, FILE * stream)
 {
   // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fileno(stream)))
+  int fd = fileno(stream);
+  if (options::RR_ignore_rw_regular_file && !socketFd(fd))
     return fread(ptr, size, count, stream);  // Directly call the libc fread() for regular IO.
 
   // Second, handle inter-process IO.
-  BLOCK_TIMER_START(fread, ins, error, ptr, size, count, stream);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(fread, ins, error, ptr, size, count, stream);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+  }
   size_t ret = Runtime::__fread(ins, error, ptr, size, count, stream);
-  BLOCK_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
+  } else {
+    SOCKET_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
+  }
   return ret;
 }
 
@@ -2002,13 +2095,23 @@ template <typename _S>
 ssize_t RecorderRT<_S>::__pread(unsigned ins, int &error, int fd, void *buf, size_t count, off_t offset)
 {
   // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fd))
+  if (options::RR_ignore_rw_regular_file && !socketFd(fd))
     return pread(fd, buf, count, offset);  // Directly call the libc pread() for regular IO.
 
   // Second, handle inter-process IO.
-  BLOCK_TIMER_START(pread, ins, error, fd, buf, count, offset);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(pread, ins, error, fd, buf, count, offset);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+  }
   ssize_t ret = Runtime::__pread(ins, error, fd, buf, count, offset);
-  BLOCK_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -2022,18 +2125,38 @@ ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *b
 template <typename _S>
 int RecorderRT<_S>::__select(unsigned ins, int &error, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 {
-  BLOCK_TIMER_START(select, ins, error, nfds, readfds, writefds, exceptfds, timeout);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(select, ins, error, nfds, readfds, writefds, exceptfds, timeout);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
+  }
   int ret = Runtime::__select(ins, error, nfds, readfds, writefds, exceptfds, timeout);
-  BLOCK_TIMER_END(syncfunc::select, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::select, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::select, (uint64_t) ret);
+  }
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__epoll_wait(unsigned ins, int &error, int epfd, struct epoll_event *events, int maxevents, int timeout)
 {  
-  BLOCK_TIMER_START(epoll_wait, ins, error, epfd, events, maxevents, timeout);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(epoll_wait, ins, error, epfd, events, maxevents, timeout);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
+  }
   int ret = Runtime::__epoll_wait(ins, error, epfd, events, maxevents, timeout);
-  BLOCK_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -2054,16 +2177,38 @@ int RecorderRT<_S>::__epoll_ctl(unsigned ins, int &error, int epfd, int op, int 
 template <typename _S>
 int RecorderRT<_S>::__poll(unsigned ins, int &error, struct pollfd *fds, nfds_t nfds, int timeout)
 {
-  BLOCK_TIMER_START(poll, ins, error, fds, nfds, timeout);
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(poll, ins, error, fds, nfds, timeout);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
+  }
   int ret = Runtime::__poll(ins, error, fds, nfds, timeout);
-  BLOCK_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
+  }
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct sockaddr *address, socklen_t address_len)
 {
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_START;
+    struct sockaddr_in *si = (sockaddr_in*)address;
+    unsigned port = (unsigned)ntohs(si->sin_port);
+    fprintf(stderr, "Server thread pself %u tid %d binds port %u\n",
+      (unsigned)pthread_self(), getpid(), port);
+    conns_add_tid_port_pair(getpid(), port);//Currenty use piid instead of _S::self().
+  }
   int ret = Runtime::__bind(ins, error, socket, address, address_len);
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_END(syncfunc::bind, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -2072,6 +2217,7 @@ int RecorderRT<_S>::__sigwait(unsigned ins, int &error, const sigset_t *set, int
 {
   BLOCK_TIMER_START(sigwait, ins, error, set, sig);
   int ret = Runtime::__sigwait(ins, error, set, sig);
+    fprintf(stderr, "WARN: Crane has not supported deterministic __sigwait yet.");
   BLOCK_TIMER_END(syncfunc::sigwait, (uint64_t) ret);
   return ret;
 }
@@ -2079,14 +2225,25 @@ int RecorderRT<_S>::__sigwait(unsigned ins, int &error, const sigset_t *set, int
 template <typename _S>
 char *RecorderRT<_S>::__fgets(unsigned ins, int &error, char *s, int size, FILE *stream)
 {
+  SOCKET_TIMER_DECL;
   // First, handle regular IO.
-  if (options::RR_ignore_rw_regular_file && regularFile(fileno(stream)))
+  int fd = fileno(stream);
+  if (options::RR_ignore_rw_regular_file && !socketFd(fd))
     return fgets(s, size, stream);  // Directly call the libc fgets() for regular IO.
 
   // Second, handle inter-process IO.
-  BLOCK_TIMER_START(fgets, ins, error, s, size, stream);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_START(fgets, ins, error, s, size, stream);
+  } else {
+    SOCKET_TIMER_START;
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+  }
   char * ret = Runtime::__fgets(ins, error, s, size, stream);
-  BLOCK_TIMER_END(syncfunc::fgets, (uint64_t) ret);
+  if (options::sched_with_paxos == 0) {
+    BLOCK_TIMER_END(syncfunc::fgets, (uint64_t) ret);
+  } else {
+    SOCKET_TIMER_END(syncfunc::fgets, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -2160,6 +2317,7 @@ pid_t RecorderRT<_S>::__wait(unsigned ins, int &error, int *status)
 {
   BLOCK_TIMER_START(wait, ins, error, status);
   pid_t ret = Runtime::__wait(ins, error, status);
+  fprintf(stderr, "WARN: Crane has not supported deterministic __wait yet.");
   BLOCK_TIMER_END(syncfunc::wait, (uint64_t)*status, (uint64_t)ret);
   return ret;
 }
@@ -2169,6 +2327,7 @@ pid_t RecorderRT<_S>::__waitpid(unsigned ins, int &error, pid_t pid, int *status
 {
   BLOCK_TIMER_START(waitpid, ins, error, pid, status, options);
   pid_t ret = Runtime::__waitpid(ins, error, pid, status, options);
+  fprintf(stderr, "WARN: Crane has not supported deterministic __waitpid yet.");
   BLOCK_TIMER_END(syncfunc::waitpid, (uint64_t)pid, (uint64_t)*status, (uint64_t)options, (uint64_t)ret);
   return ret;
 }
@@ -2299,10 +2458,29 @@ int RecorderRT<_S>::__fcntl(unsigned ins, int &error, int fd, int cmd, void *arg
 template <typename _S>
 int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
 {
-  int ret = Runtime::__close(ins, error, fd);
-  // For servers, print stat here, at this point it could be non-det but it is fine, network is non-det anyway.
+  int ret;
+  SOCKET_TIMER_DECL;
+  if (options::RR_ignore_rw_regular_file && !socketFd(fd))
+    return ret = Runtime::__close(ins, error, fd);
+
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_START;
+    paxq_print();
+    conns_print();
+    assert (conns_exist_by_server_sock(fd));
+    uint64_t conn_id = conns_get_conn_id(fd);
+    fprintf(stderr, "Pself %u tid %d calls close(%d) with connection id %lu.\n",
+      (unsigned)pthread_self(), _S::self(), fd, (unsigned long)conn_id);
+    conns_erase_by_server_sock(fd);
+  }
+  ret = Runtime::__close(ins, error, fd);
   if (options::record_runtime_stat)
     stat.print();  
+  if (options::sched_with_paxos == 1) {
+    fprintf(stderr, "Pself %u tid %d calls close(%d) on a socket.\n",
+      (unsigned)pthread_self(), _S::self(), fd);
+    SOCKET_TIMER_END(syncfunc::close, (uint64_t) ret);
+  }  
   return ret;
 }
 
@@ -2413,50 +2591,130 @@ char *RecorderRT<_S>::__strtok(unsigned ins, int &error, char * str, const char 
   return ret;
 }
 
-//////////////////////////////////////////////////////////////////////////
-// Replay Runtime
-//
-// optimization: can skip synchronization operations.  three different
-// approaches
-//
-//  - skip no synchronization operations
-//
-//  - skip sleep or barrier wait operations
-//
-//  - skip all synchronization operations
+/** Pop all send operations with the conn_id. **/
+template <typename _S>
+void RecorderRT<_S>::popSendOps(uint64_t conn_id) {
+  unsigned num_popped = 0;
+  assert(paxq_size() > 0);
+  paxos_op op = paxq_front();
+  assert(op.connection_id = conn_id && op.type == PAXQ_SEND);
+  while (op.connection_id == conn_id && op.type == PAXQ_SEND) {
+    paxq_pop_front(1);
+    num_popped++;
+    if (paxq_size() == 0)
+      break;
+    op = paxq_front();
+  }
+  fprintf(stderr, "Popped %u send operations\n", num_popped);
+}
 
-/// pthread_cond_wait(&cv, &mu)
-///   getTurn();
-///   advance iter
-///   putTurn()
-///   pthread_cond_wait(&cv, &mu); // okay to do it here, as we don't care
-///                                // when we'll be woken up, as long as
-///                                // we enforce the order later before
-///                                // exiting this hook
-///
-///   pthread_mutex_unlock(&mu);   // unlock in case we grabbed this mutex
-///                                // prematurely; see example below
-///
-///   getTurn();
-///   advance iter
-///   putTurn()
-///
-///   pthread_mutex_lock(&mu);  // safe to lock here since we have this
-///                             // mutex according to the schedule, so the
-///                             // log will not have another
-///                             // pthread_mutex_lock record before we call
-///                             // unlock.
-///
-/// Why need pthread_mutex_unlock(&mu) in above code?  consider the schedule
-///
-///    t1             t2          t3
-///  cond_wait
-///                 lock
-///                 signal
-///                 lock
-///                              lock
-///                              unlock
-///
-/// if in replay, t1 grabs lock first before t3, then replay will deadlock.
+/* A paxos operation queue from the ab client.
+paxq_print [0]: (1425233714, 0, CONNECT)
+paxq_print [1]: (70144710450, 0, CONNECT)
+paxq_print [2]: (1425233714, 1, SEND)
+paxq_print [3]: (1425233714, 2, SEND)
+paxq_print [4]: (70144710450, 1, SEND)
+paxq_print [5]: (70144710450, 2, SEND)
+paxq_print [6]: (1425233714, 3, CLOSE)
+paxq_print [7]: (70144710450, 3, CLOSE)
+*/
+template <typename _S>
+paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd) {
+  if (_S::self() > 2)
+    fprintf(stderr, "Server thread pself %u tid %d ENTER schedSocketOp(%s, syncType %s, sockFd %ld)\n",
+      (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+
+  assert(options::sched_with_paxos == 1);
+  if (syncType != DMT_REG_SYNC) {
+    assert(sockFd > 0);
+    paxq_lock();
+    conns_print();
+    paxq_print();
+    paxq_unlock();
+  }
+
+
+  paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
+  paxq_lock();
+  if (syncType == DMT_REG_SYNC) {
+    if (conns_get_conn_id_num() > 0) {
+      while (conns_get_conn_id_num() > 0 && paxq_size() == 0) {
+        paxq_unlock();
+        _S::putTurn();
+        _S::getTurn();
+        paxq_lock();
+      }
+    }
+
+    /** We need this if check, because at this moment it could be that the number of connections is 0. **/
+    if (paxq_size() > 0) {
+      op = paxq_front();
+      /** No matter what type (CONNECT, SEND, or CLOSE) from the paxos queue, 
+      we must wake up threads waiting on the port, because a server thread may wait
+      on select() or accept() to wait for CONNECT, or wait on select()/poll() 
+      to wait for SEND or CLOSE. **/
+      _S::signal((void *)(long)conns_get_port_from_tid(getpid()), true);
+
+      /** If current paxos op is SEND, then wake up the thread that waits on recv(). **/
+      if (op.type == PAXQ_SEND) {
+        _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
+      } else if (op.type == PAXQ_CLOSE) {
+        /** If current paxos op is SEND, then we don't need to wake up any more server thread
+        (because we have done so in the _S::signal() above), all we need is just to erase the conns map
+        by the connection id, and pop this paxos operation. **/
+        assert(conns_exist_by_conn_id(op.connection_id));
+        conns_erase_by_conn_id(op.connection_id);
+        paxq_pop_front(2);
+      }
+    }
+  } else {/** This is a blocking socket operation. **/
+    while (true) {
+      if (syncType == DMT_SELECT || syncType == DMT_ACCEPT) {
+        unsigned port = conns_get_port_from_tid(getpid()); 
+        paxq_unlock();
+        _S::wait((void *)(long)port);
+        paxq_lock();
+      } else {
+        assert(syncType == DMT_RECV);
+        paxq_unlock();
+        _S::wait((void *)(long)sockFd);
+        paxq_lock();
+      }
+
+      if (paxq_size() > 0) {
+        op = paxq_front();
+        if (syncType == DMT_SELECT) {
+          /* If current thread is doing a select(), then we just need to break from
+          the loop without popping the paxos operation, because at the moment of select()
+          we can not know which operation triggers the select(), so our algorithm let the server's
+          operation following the select() to pop the paxos operation (see above code). */
+          break;
+        } else {
+          if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
+            /** A recv() at server side may correspond to multiple send() at client side. **/
+            popSendOps(op.connection_id); 
+            break;
+          } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
+            paxq_pop_front(4);
+            break;
+          } else { /* Current server thread's socket operation does not match the paxos head
+            operation, just go back to _S::wait(). */
+            fprintf(stderr, "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) \
+              does not match paxos op type %d, goes back to _S::wait().\n",
+              (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd, (int)op.type);
+          }
+        } 
+      }
+    }
+  }
+  paxq_unlock();
+
+  if (_S::self() > 2)
+    fprintf(stderr, "Server thread pself %u tid %d EXITS schedSocketOp(syncType %s, sockFd %ld)\n",
+      (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd);
+
+  return op;
+}
+
 
 } // namespace tern

@@ -25,16 +25,17 @@ extern "C" {
 
 
 typedef enum {
-  PAXQ_CONNECT = 0,
+  PAXQ_INVALID = 0,
+  PAXQ_CONNECT,
   PAXQ_SEND,
   PAXQ_CLOSE
 } PAXOS_OP_TYPE;
-
 
 typedef struct {
   uint64_t connection_id;
   uint64_t counter;
   PAXOS_OP_TYPE type;
+  unsigned port; /** This field is only valid for connect operation. **/
 } paxos_op;  
 
 
@@ -42,17 +43,24 @@ typedef struct {
 void conns_init();
 uint64_t conns_get_conn_id(int server_sock);
 int conns_get_server_sock(uint64_t conn_id);
+int conns_exist_by_conn_id(uint64_t conn_id);
+int conns_exist_by_server_sock(int server_sock);
 void conns_erase_by_conn_id(uint64_t conn_id);
+void conns_erase_by_server_sock(int server_sock);
 void conns_add_pair(uint64_t conn_id, int server_sock);
-size_t conns_get_num_conn();
+size_t conns_get_conn_id_num();
+void conns_add_tid_port_pair(int tid, unsigned port);
+int conns_get_tid_from_port(unsigned port);
+unsigned conns_get_port_from_tid(int tid);
+void conns_print();
 
 
 /// APIs for the proxy-server paxos operation queue.
 void paxq_create_shared_mem();
 void paxq_open_shared_mem(int node_id);
-void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t);
+void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
 paxos_op paxq_front();
-paxos_op paxq_pop_front();
+paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();
 void paxq_lock();
 void paxq_unlock();

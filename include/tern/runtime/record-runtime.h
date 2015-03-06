@@ -117,6 +117,7 @@ struct RecorderRT: public Runtime, public _Scheduler {
   void symbolic(unsigned insid, int &error, void *addr, int nbytes, const char *name);
 
   // socket & file
+  bool socketFd(int fd);
   bool regularFile(int fd);
   int __socket(unsigned insid, int &error, int domain, int type, int protocol);
   int __listen(unsigned insid, int &error, int sockfd, int backlog);
@@ -192,10 +193,8 @@ struct RecorderRT: public Runtime, public _Scheduler {
     assert(!ret && "can't initialize semaphore!");
 
     /// Schedule with paxos queue in the proxy process. 
-    if (options::sched_with_paxos) {
+    if (options::sched_with_paxos)
       paxq_create_shared_mem();
-      num_threads_wait_sock = 0;
-    }
   }
 
   ~RecorderRT() {
@@ -229,8 +228,16 @@ protected:
 
 
   /// Schedule with paxos queue in the proxy process.
-  unsigned num_threads_wait_sock;
-  void schedSocketOp(bool isBlockSockOp = false);
+  enum SyncType {
+    DMT_REG_SYNC, /** regular pthreads sync, e.g., lock/unlock **/
+    DMT_SELECT, /** select or poll or epoll_wait **/
+    DMT_ACCEPT, /** accept or accept4 **/
+    DMT_RECV /** recv or recvfrom or fread or read, etc **/
+  };
+  const char *charSyncType[4] = {"DMT_REG_SYNC", "DMT_SELECT", "DMT_ACCEPT", "DMT_RECV"};
+  /** sockFd is only available for recv(), and for select() and accept() it is -1. **/
+  paxos_op schedSocketOp(const char *funcName, SyncType syncType, long sockFd = -1);
+  void popSendOps(uint64_t conn_id);
 
   /// Stats.
   RuntimeStat stat;

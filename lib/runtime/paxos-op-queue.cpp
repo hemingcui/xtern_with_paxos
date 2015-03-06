@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <tr1/unordered_map>
 #include <stdlib.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -46,20 +48,32 @@ PAXOS OP QUEUE TO A "PER SERVER PROCESS" BASED.**/
 
 typedef std::tr1::unordered_map<uint64_t, int> conn_id_to_server_sock;
 typedef std::tr1::unordered_map<int, uint64_t> server_sock_to_conn_id;
+typedef std::tr1::unordered_map<unsigned, int> server_port_to_tid;
+typedef std::tr1::unordered_map<int, unsigned> tid_to_server_port;
 conn_id_to_server_sock conn_id_map;
 server_sock_to_conn_id server_sock_map;
-size_t num_conn = 0;
+server_port_to_tid server_port_map;
+tid_to_server_port tid_map;
 
 void conns_init() {
-  num_conn = 0;
   conn_id_map.clear();
   server_sock_map.clear();
+  server_port_map.clear();
+  tid_map.clear();
 }
 
 uint64_t conns_get_conn_id(int server_sock) {
   server_sock_to_conn_id::iterator it = server_sock_map.find(server_sock);
   assert(it != server_sock_map.end());
   return it->second;
+}
+
+int conns_exist_by_conn_id(uint64_t conn_id) {
+  return (conn_id_map.find(conn_id) != conn_id_map.end());
+}
+
+int conns_exist_by_server_sock(int server_sock) {
+  return (server_sock_map.find(server_sock) != server_sock_map.end());
 }
     
 int conns_get_server_sock(uint64_t conn_id) {
@@ -68,17 +82,33 @@ int conns_get_server_sock(uint64_t conn_id) {
   return it->second;
 }
 
+/** When the proxy sends a PAXQ_CLOSE operation, the server thread uses this function
+to erase the connection_id. Do not need to erase the server_sock_map because the server
+thread should do this job when it calls a close() operation. (because a socket is closed at both sides). **/
 void conns_erase_by_conn_id(uint64_t conn_id) {
   conn_id_to_server_sock::iterator it = conn_id_map.find(conn_id);
   assert(it != conn_id_map.end());
   int server_sock = it->second;
   conn_id_map.erase(it);
 
+  //server_sock_to_conn_id::iterator it2 = server_sock_map.find(server_sock);
+  //assert(it2 != server_sock_map.end());
+  //server_sock_map.erase(it2);
+}
+
+/** When the server calls a close() operation, the server thread uses this function
+to erase the server_sock. Do not need to erase the conn_id_map because the server
+thread should do this job when it receives a PAXQ_CLOSE from the proxy side
+(because a socket is closed at both sides). **/
+void conns_erase_by_server_sock(int server_sock) {
   server_sock_to_conn_id::iterator it2 = server_sock_map.find(server_sock);
   assert(it2 != server_sock_map.end());
+  int conn_id = it2->second;
   server_sock_map.erase(it2);
 
-  num_conn--;
+  //conn_id_to_server_sock::iterator it = conn_id_map.find(conn_id);
+  //assert(it != conn_id_map.end());
+  //conn_id_map.erase(it);
 }
     
 void conns_add_pair(uint64_t conn_id, int server_sock) {
@@ -86,15 +116,74 @@ void conns_add_pair(uint64_t conn_id, int server_sock) {
   conn_id_map[conn_id] = server_sock;
   assert(server_sock_map.find(server_sock) == server_sock_map.end());
   server_sock_map[server_sock] = conn_id;
-  num_conn++;
+  std::cout << "conns_add_pair added pair: (connection_id "
+    << conn_id << ", server_sock " << server_sock 
+    << "), now conns size " << conns_get_conn_id_num() << std::endl;
 }
 
-size_t conns_get_num_conn() {
-  assert(conn_id_map.size() == num_conn);
-  assert(server_sock_map.size() == num_conn);
-  return num_conn;
+/** Because a socket is closed at both sides (proxy and server),
+sometimes the conn_id_map and server_sock_map can have different
+sizes. Because this function is called by the TimeAlgo (to check the paxos
+operations from the proxy queue), so I choose to return the conn_id_map.
+**/
+size_t conns_get_conn_id_num() {
+  return conn_id_map.size();
 }
 
+void conns_add_tid_port_pair(int tid, unsigned port) {
+  fprintf(stderr, "conns_add_tid_port_map insert pair (%d, %u)\n", tid, port);
+  /** Heming: these two asserts are to guarantee an assumption that a server application only
+  listens on one port, not multiple ports. Thus, a bind() operation of is called
+  only once within a process. This assumption is reasonable in modern servers.
+  **/
+  assert(server_port_map.find(port) == server_port_map.end());
+  assert(tid_map.find(tid) == tid_map.end());
+  server_port_map[port] = tid;
+  tid_map[tid] = port;
+}
+
+int conns_get_tid_from_port(unsigned port) {
+  //FIXME: THIS ASSERTION MAY FAIL IF BIND() HAPPENS AFTER A CLIENTS CONNECT.
+  fprintf(stderr, "conns_get_tid_from_port query from port %u\n", port);
+  assert(server_port_map.find(port) != server_port_map.end());
+  return server_port_map[port];
+}
+
+unsigned conns_get_port_from_tid(int tid) {
+  //FIXME: THIS ASSERTION MAY FAIL IF BIND() HAPPENS AFTER A CLIENTS CONNECT.
+  fprintf(stderr, "conns_get_port_from_tid query from tid %d\n", tid);
+  assert(tid_map.find(tid) != tid_map.end());
+  return tid_map[tid];
+}
+
+void conns_print() {
+  if (conns_get_conn_id_num() > 0) {
+    struct timeval tnow;
+    gettimeofday(&tnow, NULL);
+    std::cout << "conns_print connection pair: now time (" << tnow.tv_sec << "." << tnow.tv_usec
+      << "), size " << conns_get_conn_id_num() << std::endl;
+    conn_id_to_server_sock::iterator it = conn_id_map.begin();
+    int i = 0;
+    for (; it != conn_id_map.end(); it++, i++) {
+      /*This assertion no longer holds because conn_id_map and server_sock_map
+      can have different sizes (see conns_erase_*() functions). */
+      //assert(server_sock_map.find(it->second) != server_sock_map.end());
+      std::cout << "conns_print connection pair[" << i << "]: connection_id " << it->first << ", server sock " << it->second << std::endl;
+    }
+    std::cout << endl << endl;
+  }
+
+  if (tid_map.size() > 0) {
+    std::cout << "conns_print tid <-> port pair size: " << tid_map.size() << std::endl;
+    tid_to_server_port::iterator it = tid_map.begin();
+    int i = 0;
+    for (; it != tid_map.end(); it++, i++) {
+      assert(server_port_map.find(it->second) != server_port_map.end());
+      std::cout << "conns_print tid <-> port pair[" << i << "]: tid " << it->first << ", port " << it->second << std::endl;
+    }
+    std::cout << endl << endl;
+  }
+}
 
 namespace bip = boost::interprocess;
 typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> ShmemAllocatorCB;
@@ -102,6 +191,7 @@ typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
 bip::managed_shared_memory *segment = NULL;
 MyCircularBuffer *circbuff = NULL;
 int lockFileFd = 0;
+const char *paxq_op_str[4] = {"PAXQ_INVALID", "PAXQ_CONNECT", "PAXQ_SEND", "PAXQ_CLOSE"};
     
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
@@ -139,14 +229,14 @@ void paxq_open_shared_mem(int node_id) {
   }
 }
 
-void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) {
+void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
   paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
     std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
     paxq_unlock();
     exit(1);
   }
-  paxos_op op = {conn_id, counter, t}; // TBD: is this OK for IPC shared-memory?
+  paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
   std::cout << "paxq_push_back, now size " << paxq_size() << "\n";
   paxq_print();
@@ -154,24 +244,21 @@ void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t) 
 }
 
 paxos_op paxq_front() {
-  //lock();
   return circbuff->front();
-  //unlock();
-  //return op;    
 }
 
-paxos_op paxq_pop_front() {
-  //lock();
+paxos_op paxq_pop_front(int debugTag) {
   paxos_op op = paxq_front();
   circbuff->pop_front();
-  //unlock();
+  std::cout << "DEBUG TAG " << debugTag
+    << ": paxq_pop_front: (" << op.connection_id
+    << ", " << op.counter << ", " << paxq_op_str[op.type]
+    << ", " << op.port << ")" << std::endl;
   return op;
 }
 
 size_t paxq_size() {
-  //lock();
   size_t t = circbuff->size();
-  //unlock();
   return t;       
 }
 
@@ -222,12 +309,13 @@ void paxq_print() {
     return;
   //boost::circular_buffer::iterator itr = circbuff->begin();
   //std::cout << "paxq_print circbuff now " << circbuff << ", pself " << pthread_self() << std::endl;
-  const char *op_type[3] = {"CONNECT", "SEND", "CLOSE"};
-  std::cout << "paxq_print size " << paxq_size() << std::endl;
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
+  std::cout << "paxq_print size now time (" << tnow.tv_sec << "." << tnow.tv_usec << "), size " << paxq_size() << std::endl;
   for (size_t i = 0; i < paxq_size(); i++) {
     paxos_op &op = (*circbuff)[i];
     std::cout << "paxq_print [" << i << "]: (" << op.connection_id
-    << ", " << op.counter << ", " << op_type[op.type] << ")\n";
+    << ", " << op.counter << ", " << paxq_op_str[op.type] << ", " << op.port << ")\n";
   }
 }
 
