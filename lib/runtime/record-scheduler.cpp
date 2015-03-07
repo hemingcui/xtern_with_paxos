@@ -398,6 +398,10 @@ void RRScheduler::childForkReturn() {
   Parent::childForkReturn();
   for(int i=0; i<MAX_THREAD_NUM; ++i)
     waits[i].reset();
+
+  inter_pro_wakeup_tids.clear();
+  inter_pro_wakeup_flag = 0;
+  pthread_mutex_init(&inter_pro_wakeup_mutex, NULL);
 }
 
 
