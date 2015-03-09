@@ -221,7 +221,7 @@ struct Serializer: public TidMap {
   /// lead to a real success of a synchronization operation (e.g., see
   /// pthread_mutex_lock() implementation)
   static const int INF = 0x7fffff00;
-  virtual unsigned incTurnCount(void);
+  virtual unsigned incTurnCount(unsigned delta = 0);
   virtual unsigned getTurnCount(void);
 
   Serializer();

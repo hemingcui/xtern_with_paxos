@@ -63,7 +63,7 @@ void paxq_open_shared_mem(int node_id);
 void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
 paxos_op paxq_front();
-void paxq_dec_front_value();
+unsigned paxq_dec_front_value();
 paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();
 void paxq_lock();

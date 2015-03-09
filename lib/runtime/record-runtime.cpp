@@ -158,14 +158,20 @@ timespec time_diff(const timespec &start, const timespec &end)
 
 timespec update_time()
 {
-  timespec start_time;
+  timespec ret;
+  timeval tnow;
+  gettimeofday(&tnow, NULL);
+  ret.tv_sec = tnow.tv_sec;
+  ret.tv_nsec = tnow.tv_usec;
+  return ret;
+/*  timespec start_time;
   if (options::log_sync) {
     clock_gettime(CLOCK_REALTIME , &start_time);
     timespec ret = time_diff(my_time, start_time);
     my_time = start_time; 
     return ret;
   } else
-    return start_time;
+    return start_time;*/
 }
 
 void check_options()
@@ -276,6 +282,8 @@ void RecorderRT<_S>::idle_cond_wait(void) {
     _S::putTurn();
 }
 
+#define PSELF \
+  (unsigned)pthread_self()
 
 #define BLOCK_TIMER_START(sync_op, ...) \
   if (options::record_runtime_stat) \
@@ -2641,8 +2649,7 @@ char *RecorderRT<_S>::__strtok(unsigned ins, int &error, char * str, const char 
 }
 
 /** Pop all send operations with the conn_id. **/
-template <typename _S>
-void RecorderRT<_S>::popSendOps(uint64_t conn_id) {
+void popSendOps(uint64_t conn_id) { 
   unsigned num_popped = 0;
   assert(paxq_size() > 0);
   paxos_op op = paxq_front();
@@ -2669,13 +2676,13 @@ paxq_print [7]: (70144710450, 3, CLOSE)
 */
 template <typename _S>
 paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd, void *selectWaitObj) {
+  // Debug info.
   struct timeval tnow;
-  if (_S::self() >= 2) {
+  if (_S::self() >= 2) { 
     gettimeofday(&tnow, NULL);
-    fprintf(stderr, "Server thread time <%ld.%ld> pself %u tid %d ENTER schedSocketOp(%s, syncType %s, sockFd %ld)\n",
-      tnow.tv_sec, tnow.tv_usec, (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+    fprintf(stderr, "ENTER schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
   }
-
   assert(options::sched_with_paxos == 1);
   if (syncType != DMT_REG_SYNC) {
     assert(sockFd > 0);
@@ -2698,10 +2705,21 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           if (op.value == 1) {
             // If server threads have consumed all clocks of the NOP, then pop this paxos op and recheck the paxoq queue.
             paxq_pop_front(5);
+          } else if (paxq_size() >= 2) {
+            /** If real paxos operations have come (paxq_size() >= 2), then fast forward. 
+            Note that we can naively pop the NOP and leave, because at this moment our logical clock
+            is "nondeterministic" (e.g., let's say the clock when inserts this NOP is 1000, current logical clock 
+            can be 1993 or 1994 depending on when the next real paxos operation arrives, and target is 3000)
+            when the second (and real) operation arrives, but our target logical clock is deterministic. **/
+            op = paxq_pop_front(6);
+            unsigned clock_left = op.value;
+            _S::incTurnCount(clock_left); // This operation is safe because current thread is holding the global turn.
           } else {
             /** Now current thread has "consumed and poped one socket operation",
             current thread can just leave this function and call the actual sync operation. **/
-            paxq_dec_front_value();
+            unsigned clk = paxq_dec_front_value();
+            fprintf(stderr, "Pself %u tid %d, turnCount %u, decrease PAX_NOP clock: %u\n",
+              PSELF, _S::self(), _S::turnCount, clk);
             goto algo_exit;
           }
         }
@@ -2731,6 +2749,9 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
         assert(conns_exist_by_conn_id(op.connection_id));
         conns_erase_by_conn_id(op.connection_id);
         paxq_pop_front(2);
+        if (conns_get_conn_id_num() > 0 && paxq_size() == 0) { // For close(), we only need to assign the logical clock only if there are still alive connections.
+          paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
+        }
       }
     }
   } else {/** This is a blocking socket operation. **/
@@ -2749,7 +2770,6 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       paxq_lock();
 
       if (paxq_size() > 0) {
-        op = paxq_front();
         if (syncType == DMT_SELECT) {
           /* If current thread is doing a select(), then we just need to break from
           the loop without popping the paxos operation, because at the moment of select()
@@ -2757,17 +2777,19 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           operation following the select() to pop the paxos operation (see above code). */
           break;
         } else {
+          op = paxq_front();
           if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
             /** A recv() at server side may correspond to multiple send() at client side. **/
             popSendOps(op.connection_id); 
-            /** For current recv(), pop in a number of counts so that
-            current thread (and also other threads) can finish processing their
-            requests, reply back to clients, and so that the client can continue
-            to append further operations into paxos queue to make this queue non empty. **/
-            paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops);
+            if (paxq_size() == 0) {
+              paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
+            }
             break;
           } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
             paxq_pop_front(4);
+            if (paxq_size() == 0) {
+              paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
+            }
             break;
           } else { /* Current server thread's socket operation does not match the paxos head
             operation, just go back to _S::wait(). */
@@ -2785,8 +2807,8 @@ algo_exit:
   paxq_unlock();
   if (_S::self() >= 2) {
     gettimeofday(&tnow, NULL);
-    fprintf(stderr, "Server thread time <%ld.%ld> pself %u tid %d EXIT schedSocketOp(%s, syncType %s, sockFd %ld)\n",
-      tnow.tv_sec, tnow.tv_usec, (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+    fprintf(stderr, "LEAVE schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
   }
   return op;
 }

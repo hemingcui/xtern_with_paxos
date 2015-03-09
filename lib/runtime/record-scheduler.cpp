@@ -131,6 +131,28 @@ unsigned RRScheduler::nextTimeout()
 
 //@before with turn
 //@after with turn
+int RRScheduler::forwardTimeouts(unsigned delta)
+{
+  int num_forward = 0;
+  list<int>::iterator prv, cur;
+  // use delete-safe way of iterating the list
+  for(cur=waitq.begin(); cur!=waitq.end();) {
+    prv = cur ++;
+    int tid = *prv;
+    assert(tid >=0 && tid < Scheduler::nthread);
+    if(waits[tid].timeout < FOREVER) {
+      fprintf(stderr, "RRScheduler: %d forward timed out (%p, old %u --> new %u)\n",
+              tid, waits[tid].chan, waits[tid].timeout, waits[tid].timeout + delta);
+      waits[tid].timeout = waits[tid].timeout + delta;
+      ++ num_forward;
+    }
+  }
+  SELFCHECK;
+  return num_forward;
+}
+
+//@before with turn
+//@after with turn
 int RRScheduler::fireTimeouts()
 {
   int timedout = 0;
@@ -381,9 +403,11 @@ void RRScheduler::signal(void *chan, bool all)
 
 //@before with turn
 //@after with turn
-unsigned RRScheduler::incTurnCount(void)
+unsigned RRScheduler::incTurnCount(unsigned delta)
 {
-  unsigned ret = Serializer::incTurnCount();
+  unsigned ret = Serializer::incTurnCount(delta);
+  if (delta > 0)
+    forwardTimeouts(delta);
   fireTimeouts();
   check_wakeup();
   return ret;

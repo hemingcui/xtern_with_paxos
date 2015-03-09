@@ -127,7 +127,7 @@ struct RRScheduler: public Scheduler {
   virtual bool interProEnd();
   virtual void wakeup();
 
-  unsigned incTurnCount(void);
+  unsigned incTurnCount(unsigned delta = 0);
   unsigned getTurnCount(void);
 
   void childForkReturn();
@@ -137,6 +137,8 @@ struct RRScheduler: public Scheduler {
 
 protected:
 
+  ///Fast forward all limited timeout values.
+  int forwardTimeouts(unsigned delta);
   /// timeout threads on @waitq
   int fireTimeouts();
   /// return the next timeout turn number

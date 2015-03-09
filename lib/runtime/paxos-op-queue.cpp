@@ -267,13 +267,13 @@ paxos_op paxq_front() {
   return circbuff->front();
 }
 
-void paxq_dec_front_value() {
+unsigned paxq_dec_front_value() {
   assert(paxq_size() > 0);
   paxos_op &op = circbuff->front();
   assert(op.type == PAXQ_NOP);
   assert(op.value != 0);
   op.value--;
-  std::cout << "consume the PAX_NOP logical clock value " << op.value << std::endl;
+  return op.value;
 }
 
 
