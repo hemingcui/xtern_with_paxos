@@ -354,7 +354,8 @@ void RecorderRT<_S>::idle_cond_wait(void) {
     stat.nDetPthreadSyncOp++; \
   sched_time = update_time(); \
   if (_S::self() != 1) \
-    fprintf(stderr, "\n\nSOCKET_TIMER_START ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+    fprintf(stderr, "\n\nSOCKET_TIMER_START time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
+      sched_time.tv_sec, sched_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 // SOCKET_TIMER_END is the same as SCHED_TIMER_END.
@@ -363,7 +364,8 @@ void RecorderRT<_S>::idle_cond_wait(void) {
   _S::putTurn();\
   errno = backup_errno; \
   if (_S::self() != 1) \
-    fprintf(stderr, "\n\nSOCKET_TIMER_END ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+    fprintf(stderr, "\n\nSOCKET_TIMER_END time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
+      syscall_time.tv_sec, syscall_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 #define SCHED_TIMER_THREAD_END(syncop, ...) \
@@ -1905,9 +1907,11 @@ int RecorderRT<_S>::__accept(unsigned ins, int &error, int sockfd, struct sockad
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
   } else {
-    fprintf(stderr, "Server thread pself %u tid %d accepted socket %d\n",
-      (unsigned)pthread_self(), _S::self(), ret);
     // this code should be put at after accept() is returned so that we can get the conns mapping.
+    struct timeval tnow;
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "Server thread pself %u tid %d accepted socket %d time <%ld.%ld>\n",
+      (unsigned)pthread_self(), _S::self(), ret, tnow.tv_sec, tnow.tv_usec);
     assert (op.type == PAXQ_CONNECT && ret != -1);
     conns_add_pair(op.connection_id, ret);
     SOCKET_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
@@ -2122,6 +2126,28 @@ ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *b
   return ret;
 }
 
+void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds) {
+  if (writefds || exceptfds)
+    fprintf(stderr, "WARN: server's select() writefds || exceptfds is not NULL.\n");
+  int num_server_sock = 0;
+  void *ret = (void *)(long)conns_get_port_from_tid(getpid());
+  for (int i = 0; i < nfds; ++i) {
+    // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
+    if (FD_ISSET(i, readfds) && conns_exist_by_server_sock(i)) {
+      fprintf(stderr, "Server's select() finds established socket pair <%lu, %d>.\n",
+        conns_get_conn_id(i), i);
+      num_server_sock++;
+      ret = (void *)(long)i;
+    }
+  }
+  if (num_server_sock > 1) {
+    fprintf(stderr, "WARN: server's select() num_server_sock > 1. Use the universal port as wait obj\n");
+    assert(false);
+    ret = (void *)(long)conns_get_port_from_tid(getpid());
+  }
+  return ret;
+}
+
 template <typename _S>
 int RecorderRT<_S>::__select(unsigned ins, int &error, int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 {
@@ -2130,7 +2156,7 @@ int RecorderRT<_S>::__select(unsigned ins, int &error, int nfds, fd_set *readfds
     BLOCK_TIMER_START(select, ins, error, nfds, readfds, writefds, exceptfds, timeout);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
+    schedSocketOp(__FUNCTION__, DMT_SELECT, -1, get_select_wait_obj(nfds, readfds, writefds, exceptfds));
   }
   int ret = Runtime::__select(ins, error, nfds, readfds, writefds, exceptfds, timeout);
   if (options::sched_with_paxos == 0) {
@@ -2174,6 +2200,27 @@ int RecorderRT<_S>::__epoll_ctl(unsigned ins, int &error, int epfd, int op, int 
   return ret;
 }
 
+void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
+  int num_server_sock = 0;
+  void *ret = (void *)(long)conns_get_port_from_tid(getpid());
+  for (int i = 0; i < nfds; ++i) {
+    // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
+    int server_sock = fds[i].fd;
+    if (conns_exist_by_server_sock(server_sock)) {
+      fprintf(stderr, "Server's poll() finds established socket pair <%lu, %d>.\n",
+        conns_get_conn_id(server_sock), server_sock);
+      num_server_sock++;
+      ret = (void *)(long)server_sock;
+    }
+  }
+  if (num_server_sock > 1) {
+    fprintf(stderr, "WARN: server's poll() num_server_sock > 1. Use the universal port as wait obj\n");
+    assert(false);
+    ret = (void *)(long)conns_get_port_from_tid(getpid());
+  }
+  return ret;
+}
+
 template <typename _S>
 int RecorderRT<_S>::__poll(unsigned ins, int &error, struct pollfd *fds, nfds_t nfds, int timeout)
 {
@@ -2182,7 +2229,7 @@ int RecorderRT<_S>::__poll(unsigned ins, int &error, struct pollfd *fds, nfds_t 
     BLOCK_TIMER_START(poll, ins, error, fds, nfds, timeout);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
+    schedSocketOp(__FUNCTION__, DMT_SELECT, -1, get_poll_wait_obj(fds, nfds));
   }
   int ret = Runtime::__poll(ins, error, fds, nfds, timeout);
   if (options::sched_with_paxos == 0) {
@@ -2477,8 +2524,10 @@ int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
   if (options::record_runtime_stat)
     stat.print();  
   if (options::sched_with_paxos == 1) {
-    fprintf(stderr, "Pself %u tid %d calls close(%d) on a socket.\n",
-      (unsigned)pthread_self(), _S::self(), fd);
+    struct timeval tnow;
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "Server thread pself %u tid %d closed socket %d time <%ld.%ld>\n",
+      (unsigned)pthread_self(), _S::self(), ret, tnow.tv_sec, tnow.tv_usec);
     SOCKET_TIMER_END(syncfunc::close, (uint64_t) ret);
   }  
   return ret;
@@ -2619,10 +2668,13 @@ paxq_print [6]: (1425233714, 3, CLOSE)
 paxq_print [7]: (70144710450, 3, CLOSE)
 */
 template <typename _S>
-paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd) {
-  if (_S::self() > 2)
-    fprintf(stderr, "Server thread pself %u tid %d ENTER schedSocketOp(%s, syncType %s, sockFd %ld)\n",
-      (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd, void *selectWaitObj) {
+  struct timeval tnow;
+  if (_S::self() >= 2) {
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "Server thread time <%ld.%ld> pself %u tid %d ENTER schedSocketOp(%s, syncType %s, sockFd %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+  }
 
   assert(options::sched_with_paxos == 1);
   if (syncType != DMT_REG_SYNC) {
@@ -2637,11 +2689,27 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
   paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
   paxq_lock();
   if (syncType == DMT_REG_SYNC) {
-    if (conns_get_conn_id_num() > 0) {
-      while (conns_get_conn_id_num() > 0 && paxq_size() == 0) {
+    while (conns_get_conn_id_num() > 0) {
+      if (paxq_size() > 0) { // If has paxos op, check whether it is PAXQ_NOP.
+        op = paxq_front();
+        if (op.type != PAXQ_NOP) // If it is not PAXQ_NOP, just move forward to signal the right thread to process it.
+          break;
+        else { // If it is PAXQ_NOP, just tick the logical clock to consume this NOP.
+          if (op.value == 1) {
+            // If server threads have consumed all clocks of the NOP, then pop this paxos op and recheck the paxoq queue.
+            paxq_pop_front(5);
+          } else {
+            /** Now current thread has "consumed and poped one socket operation",
+            current thread can just leave this function and call the actual sync operation. **/
+            paxq_dec_front_value();
+            goto algo_exit;
+          }
+        }
+      } else { /** Busy wait until paxq is non empty. We hope this don't happen. **/
         paxq_unlock();
-        _S::putTurn();
-        _S::getTurn();
+        sched_yield();
+        fprintf(stderr, "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) busy wait...\n",
+          (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd);
         paxq_lock();
       }
     }
@@ -2649,19 +2717,17 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
     /** We need this if check, because at this moment it could be that the number of connections is 0. **/
     if (paxq_size() > 0) {
       op = paxq_front();
+      assert(op.type != PAXQ_NOP);
       /** No matter what type (CONNECT, SEND, or CLOSE) from the paxos queue, 
       we must wake up threads waiting on the port, because a server thread may wait
       on select() or accept() to wait for CONNECT, or wait on select()/poll() 
       to wait for SEND or CLOSE. **/
-      _S::signal((void *)(long)conns_get_port_from_tid(getpid()), true);
-
-      /** If current paxos op is SEND, then wake up the thread that waits on recv(). **/
-      if (op.type == PAXQ_SEND) {
+      if (op.type == PAXQ_CONNECT) {
+        _S::signal((void *)(long)conns_get_port_from_tid(getpid()));
+      } else if (op.type == PAXQ_SEND) { /** If current paxos op is SEND, then wake up the thread that waits on recv(). **/
         _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
       } else if (op.type == PAXQ_CLOSE) {
-        /** If current paxos op is SEND, then we don't need to wake up any more server thread
-        (because we have done so in the _S::signal() above), all we need is just to erase the conns map
-        by the connection id, and pop this paxos operation. **/
+        _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); /** A server thread may wait on recv() or select() that may be triggered by this close() from client. **/
         assert(conns_exist_by_conn_id(op.connection_id));
         conns_erase_by_conn_id(op.connection_id);
         paxq_pop_front(2);
@@ -2669,17 +2735,18 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
     }
   } else {/** This is a blocking socket operation. **/
     while (true) {
-      if (syncType == DMT_SELECT || syncType == DMT_ACCEPT) {
+      paxq_unlock();
+      if (syncType == DMT_SELECT) {
+        assert(selectWaitObj); 
+        _S::wait(selectWaitObj); /** This selectWaitObj is either the port for listener thread or the sockfd for worker threads. **/
+      } else if (syncType == DMT_ACCEPT) {
         unsigned port = conns_get_port_from_tid(getpid()); 
-        paxq_unlock();
         _S::wait((void *)(long)port);
-        paxq_lock();
       } else {
         assert(syncType == DMT_RECV);
-        paxq_unlock();
         _S::wait((void *)(long)sockFd);
-        paxq_lock();
       }
+      paxq_lock();
 
       if (paxq_size() > 0) {
         op = paxq_front();
@@ -2693,6 +2760,11 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
             /** A recv() at server side may correspond to multiple send() at client side. **/
             popSendOps(op.connection_id); 
+            /** For current recv(), pop in a number of counts so that
+            current thread (and also other threads) can finish processing their
+            requests, reply back to clients, and so that the client can continue
+            to append further operations into paxos queue to make this queue non empty. **/
+            paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops);
             break;
           } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
             paxq_pop_front(4);
@@ -2707,12 +2779,15 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       }
     }
   }
+
+
+algo_exit:
   paxq_unlock();
-
-  if (_S::self() > 2)
-    fprintf(stderr, "Server thread pself %u tid %d EXITS schedSocketOp(syncType %s, sockFd %ld)\n",
-      (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd);
-
+  if (_S::self() >= 2) {
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "Server thread time <%ld.%ld> pself %u tid %d EXIT schedSocketOp(%s, syncType %s, sockFd %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, (unsigned)pthread_self(), _S::self(), funcName, charSyncType[syncType], sockFd);
+  }
   return op;
 }
 

@@ -69,6 +69,7 @@ enforce_annotations = 1
 
 # if turned on, xtern must run with the proxy of libevent_paxos.
 sched_with_paxos = 0
+sched_with_paxos_nops = 10000
 
 # if turned on, record runtime stat such as # of sync operations called.
 record_runtime_stat = 0

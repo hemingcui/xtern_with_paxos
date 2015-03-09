@@ -191,8 +191,8 @@ typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
 bip::managed_shared_memory *segment = NULL;
 MyCircularBuffer *circbuff = NULL;
 int lockFileFd = 0;
-const char *paxq_op_str[4] = {"PAXQ_INVALID", "PAXQ_CONNECT", "PAXQ_SEND", "PAXQ_CLOSE"};
-    
+const char *paxq_op_str[5] = {"PAXQ_INVALID", "PAXQ_CONNECT", "PAXQ_SEND", "PAXQ_CLOSE", "PAXQ_NOP"};
+
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
 #ifdef DEBUG_PAXOS_OP_QUEUE
@@ -229,33 +229,66 @@ void paxq_open_shared_mem(int node_id) {
   }
 }
 
-void paxq_push_back_w_lock(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
-  paxq_lock();
+void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
+  if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
     std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
-    paxq_unlock();
+    if (with_lock) paxq_unlock();
+    exit(1);
+  }
+  paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
+  circbuff->insert(circbuff->begin(), op);      
+  std::cout << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
+    << ">, now size " << paxq_size() << "\n";
+  paxq_print();
+  if (with_lock) paxq_unlock();
+}
+
+void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
+  if (with_lock) paxq_lock();
+  if (paxq_size() == ELEM_CAPACITY) {
+    std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+    if (with_lock) paxq_unlock();
     exit(1);
   }
   paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
-  std::cout << "paxq_push_back, now size " << paxq_size() << "\n";
+  std::cout << "paxq_push_back time <" << tnow.tv_sec << "." << tnow.tv_usec
+    << ">, now size " << paxq_size() << "\n";
   paxq_print();
-  paxq_unlock();
+  if (with_lock) paxq_unlock();
 }
 
 paxos_op paxq_front() {
   return circbuff->front();
 }
 
+void paxq_dec_front_value() {
+  assert(paxq_size() > 0);
+  paxos_op &op = circbuff->front();
+  assert(op.type == PAXQ_NOP);
+  assert(op.value != 0);
+  op.value--;
+  std::cout << "consume the PAX_NOP logical clock value " << op.value << std::endl;
+}
+
+
 paxos_op paxq_pop_front(int debugTag) {
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
   paxos_op op = paxq_front();
   circbuff->pop_front();
   std::cout << "DEBUG TAG " << debugTag
-    << ": paxq_pop_front: (" << op.connection_id
+    << ": paxq_pop_front time <" << tnow.tv_sec << "." << tnow.tv_usec 
+    << ">: (" << op.connection_id
     << ", " << op.counter << ", " << paxq_op_str[op.type]
-    << ", " << op.port << ")" << std::endl;
+    << ", " << op.value << ")" << std::endl;
   return op;
-}
+} 
 
 size_t paxq_size() {
   size_t t = circbuff->size();
@@ -315,7 +348,7 @@ void paxq_print() {
   for (size_t i = 0; i < paxq_size(); i++) {
     paxos_op &op = (*circbuff)[i];
     std::cout << "paxq_print [" << i << "]: (" << op.connection_id
-    << ", " << op.counter << ", " << paxq_op_str[op.type] << ", " << op.port << ")\n";
+    << ", " << op.counter << ", " << paxq_op_str[op.type] << ", " << op.value << ")\n";
   }
 }
 

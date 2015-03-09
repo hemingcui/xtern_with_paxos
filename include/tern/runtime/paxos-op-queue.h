@@ -28,14 +28,16 @@ typedef enum {
   PAXQ_INVALID = 0,
   PAXQ_CONNECT,
   PAXQ_SEND,
-  PAXQ_CLOSE
+  PAXQ_CLOSE,
+  PAXQ_NOP
 } PAXOS_OP_TYPE;
 
 typedef struct {
   uint64_t connection_id;
   uint64_t counter;
   PAXOS_OP_TYPE type;
-  unsigned port; /** This field is only valid for connect operation. **/
+  unsigned value; /** This field means "port" for PAXQ_CONNECT, "logical clock" 
+  for PAXQ_NOP, and invalid for all the other types of paxos operations. **/
 } paxos_op;  
 
 
@@ -58,8 +60,10 @@ void conns_print();
 /// APIs for the proxy-server paxos operation queue.
 void paxq_create_shared_mem();
 void paxq_open_shared_mem(int node_id);
-void paxq_push_back(uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
+void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
+void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
 paxos_op paxq_front();
+void paxq_dec_front_value();
 paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();
 void paxq_lock();
