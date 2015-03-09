@@ -23,8 +23,8 @@
 
 #define ELEM_CAPACITY 10000
 #define DELTA 100 // TBD: don't know why we couldn't get 100% of the shared mem.
-#define SEG_NAME "PAXOS_OP_QUEUE"
-#define CB_NAME "CIRCULAR_BUFFER"
+#define SEG_NAME "/PAXOS_OP_QUEUE"
+#define CB_NAME "/CIRCULAR_BUFFER"
 #define LOCK_FILE_NAME "/tmp/paxos_queue_file_lock"
 //#define DEBUG_PAXOS_OP_QUEUE
 
