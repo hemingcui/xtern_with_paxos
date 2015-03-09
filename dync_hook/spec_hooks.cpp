@@ -96,6 +96,7 @@ extern "C" int __libc_start_main(
   size_t lastSlash = libPath.find_last_of("/");
   libPath = libPath.substr(0, lastSlash);
   libPath += "/libc.so.6";
+  libPath = "/lib/x86_64-linux-gnu/libc.so.6"; // Heming hack: weird thing on bug03.
 
   if(!(handle=dlopen(libPath.c_str(), RTLD_LAZY))) {
     puts("dlopen error");
