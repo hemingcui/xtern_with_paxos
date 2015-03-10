@@ -141,7 +141,7 @@ int RRScheduler::forwardTimeouts(unsigned delta)
     int tid = *prv;
     assert(tid >=0 && tid < Scheduler::nthread);
     if(waits[tid].timeout < FOREVER) {
-      fprintf(stderr, "RRScheduler: %d forward timed out (%p, old %u --> new %u)\n",
+      dprintf( "RRScheduler: %d forward timed out (%p, old %u --> new %u)\n",
               tid, waits[tid].chan, waits[tid].timeout, waits[tid].timeout + delta);
       waits[tid].timeout = waits[tid].timeout + delta;
       ++ num_forward;

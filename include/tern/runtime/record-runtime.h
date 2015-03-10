@@ -236,7 +236,8 @@ protected:
   };
   const char *charSyncType[4] = {"DMT_REG_SYNC", "DMT_SELECT", "DMT_ACCEPT", "DMT_RECV"};
   /** sockFd is only available for recv(), and for select() and accept() it is -1. **/
-  paxos_op schedSocketOp(const char *funcName, SyncType syncType, long sockFd = -1, void *selectWaitObj = NULL);
+  paxos_op schedSocketOp(const char *funcName, SyncType syncType,
+    long sockFd = -1, void *selectWaitObj = NULL, unsigned recvLen = 0);
 
   /// Stats.
   RuntimeStat stat;

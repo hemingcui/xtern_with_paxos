@@ -35,9 +35,9 @@ extern "C" {
 using namespace std;
 
 #ifdef DEBUG_PAXOS_OP_QUEUE
-#define PRINT std::cout
+#define DPRINT std::cout
 #else
-#define PRINT if (false) std::cout
+#define DPRINT if (false) std::cout
 #endif
 
 /** TBD: CURRENT WE ASSUME THE SERVER HAS ONLY ONE PROCESS TALKING TO THE PROXY.
@@ -116,8 +116,8 @@ void conns_add_pair(uint64_t conn_id, int server_sock) {
   conn_id_map[conn_id] = server_sock;
   assert(server_sock_map.find(server_sock) == server_sock_map.end());
   server_sock_map[server_sock] = conn_id;
-  std::cout << "conns_add_pair added pair: (connection_id "
-    << conn_id << ", server_sock " << server_sock 
+  DPRINT << "conns_add_pair added pair: (connection_id "
+    << (unsigned long)conn_id << ", server_sock " << server_sock 
     << "), now conns size " << conns_get_conn_id_num() << std::endl;
 }
 
@@ -131,7 +131,7 @@ size_t conns_get_conn_id_num() {
 }
 
 void conns_add_tid_port_pair(int tid, unsigned port) {
-  fprintf(stderr, "conns_add_tid_port_map insert pair (%d, %u)\n", tid, port);
+  //fprintf(stderr, "conns_add_tid_port_map insert pair (%d, %u)\n", tid, port);
   /** Heming: these two asserts are to guarantee an assumption that a server application only
   listens on one port, not multiple ports. Thus, a bind() operation of is called
   only once within a process. This assumption is reasonable in modern servers.
@@ -150,17 +150,20 @@ int conns_get_tid_from_port(unsigned port) {
 }
 
 unsigned conns_get_port_from_tid(int tid) {
-  //FIXME: THIS ASSERTION MAY FAIL IF BIND() HAPPENS AFTER A CLIENTS CONNECT.
-  fprintf(stderr, "conns_get_port_from_tid query from tid %d\n", tid);
+  //fprintf(stderr, "conns_get_port_from_tid query from tid %d\n", tid);
   assert(tid_map.find(tid) != tid_map.end());
   return tid_map[tid];
 }
 
 void conns_print() {
+#ifndef DEBUG_PAXOS_OP_QUEUE
+  return;
+#endif
+
   if (conns_get_conn_id_num() > 0) {
     struct timeval tnow;
     gettimeofday(&tnow, NULL);
-    std::cout << "conns_print connection pair: now time (" << tnow.tv_sec << "." << tnow.tv_usec
+    DPRINT << "conns_print connection pair: now time (" << tnow.tv_sec << "." << tnow.tv_usec
       << "), size " << conns_get_conn_id_num() << std::endl;
     conn_id_to_server_sock::iterator it = conn_id_map.begin();
     int i = 0;
@@ -168,20 +171,21 @@ void conns_print() {
       /*This assertion no longer holds because conn_id_map and server_sock_map
       can have different sizes (see conns_erase_*() functions). */
       //assert(server_sock_map.find(it->second) != server_sock_map.end());
-      std::cout << "conns_print connection pair[" << i << "]: connection_id " << it->first << ", server sock " << it->second << std::endl;
+      DPRINT << "conns_print connection pair[" << i << "]: connection_id " << (unsigned long)it->first
+        << ", server sock " << it->second << std::endl;
     }
-    std::cout << endl << endl;
+    DPRINT << endl << endl;
   }
 
   if (tid_map.size() > 0) {
-    std::cout << "conns_print tid <-> port pair size: " << tid_map.size() << std::endl;
+    DPRINT << "conns_print tid <-> port pair size: " << tid_map.size() << std::endl;
     tid_to_server_port::iterator it = tid_map.begin();
     int i = 0;
     for (; it != tid_map.end(); it++, i++) {
       assert(server_port_map.find(it->second) != server_port_map.end());
-      std::cout << "conns_print tid <-> port pair[" << i << "]: tid " << it->first << ", port " << it->second << std::endl;
+      DPRINT << "conns_print tid <-> port pair[" << i << "]: tid " << it->first << ", port " << it->second << std::endl;
     }
-    std::cout << endl << endl;
+    DPRINT << endl << endl;
   }
 }
 
@@ -195,14 +199,8 @@ const char *paxq_op_str[5] = {"PAXQ_INVALID", "PAXQ_CONNECT", "PAXQ_SEND", "PAXQ
 
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
-#ifdef DEBUG_PAXOS_OP_QUEUE
   std::cout << "Init shared memory " << (bip::shared_memory_object::remove(SEG_NAME) ?
     "cleaned up: " : "not exist: " ) << SEG_NAME << "\n";
-#else
-  bip::shared_memory_object::remove(SEG_NAME);
-#endif
-  // TBD: must pass the PROXY_NODE_ID env var.
-  // TBD.
 
   segment = new bip::managed_shared_memory(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
   static const ShmemAllocatorCB alloc_inst (segment->get_segment_manager());
@@ -240,31 +238,35 @@ void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_
   }
   paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
   circbuff->insert(circbuff->begin(), op);      
-  std::cout << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
+  DPRINT << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
     << ">, now size " << paxq_size() << "\n";
   paxq_print();
   if (with_lock) paxq_unlock();
 }
 
-void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
+void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned value) {
+#ifdef DEBUG_PAXOS_OP_QUEUE
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
+  std::cout << "paxq_push_back time <" << tnow.tv_sec << "." << tnow.tv_usec
+    << "> , op (" << (unsigned long)conn_id << ", " << counter << ", " << paxq_op_str[t] << ", " << value << ")." << std::endl;
+#endif
+
   if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
     std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
     if (with_lock) paxq_unlock();
     exit(1);
   }
-  paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
+  paxos_op op = {conn_id, counter, t, value}; // TBD: is this OK for IPC shared-memory?
   circbuff->push_back(op);      
-  std::cout << "paxq_push_back time <" << tnow.tv_sec << "." << tnow.tv_usec
-    << ">, now size " << paxq_size() << "\n";
-  paxq_print();
   if (with_lock) paxq_unlock();
 }
 
-paxos_op paxq_front() {
-  return circbuff->front();
+paxos_op paxq_get_op(unsigned index) {
+  assert(index < paxq_size());
+  paxos_op ret = (*circbuff)[index];
+  return ret;
 }
 
 unsigned paxq_dec_front_value() {
@@ -280,12 +282,12 @@ unsigned paxq_dec_front_value() {
 paxos_op paxq_pop_front(int debugTag) {
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
-  paxos_op op = paxq_front();
+  paxos_op op = paxq_get_op(0);
   circbuff->pop_front();
-  std::cout << "DEBUG TAG " << debugTag
+  DPRINT << "DEBUG TAG " << debugTag
     << ": paxq_pop_front time <" << tnow.tv_sec << "." << tnow.tv_usec 
-    << ">: (" << op.connection_id
-    << ", " << op.counter << ", " << paxq_op_str[op.type]
+    << ">: (" << (unsigned long)op.connection_id
+    << ", " << (unsigned long)op.counter << ", " << paxq_op_str[op.type]
     << ", " << op.value << ")" << std::endl;
   return op;
 } 
@@ -303,8 +305,45 @@ void paxq_unlock() {
   lockf(lockFileFd, F_ULOCK, 0);
 }
 
-void paxq_test() {
+void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
 #ifdef DEBUG_PAXOS_OP_QUEUE
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
+#endif
+
+  unsigned actual_delete = 0;
+  while (actual_delete < num_delete) {
+    assert(paxq_size() > 0);
+    MyCircularBuffer::iterator itr = circbuff->begin();
+    unsigned i = 0;
+    for (; itr != circbuff->end(); itr++, i++) {
+      paxos_op op = (*circbuff)[i];
+      if (op.connection_id == conn_id) {
+
+#ifdef DEBUG_PAXOS_OP_QUEUE
+        fprintf(stderr, "DEBUG TAG 1: paxq_pop_front time <%ld.%ld>: (%ld, %lu, %s, %u)\n",
+          tnow.tv_sec, tnow.tv_usec, (long)op.connection_id, (unsigned long)op.counter, paxq_op_str[op.type], op.value);
+#endif
+
+        circbuff->erase(itr);
+        actual_delete++;
+        break;
+      }
+    }
+  }
+  DPRINT << "paxq_delete_ops deleted number of operations: " << actual_delete << std::endl;
+}
+
+void paxq_set_conn_id(unsigned index, uint64_t new_conn_id) {
+  assert(index < paxq_size());
+  (*circbuff)[index].connection_id = new_conn_id;
+}
+
+void paxq_test() {
+#ifndef DEBUG_PAXOS_OP_QUEUE
+  return;
+#endif
+
   std::cout << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
   for (int i = 0; i < ELEM_CAPACITY*2+123; i++) {
     paxos_op op = {i, i, PAXQ_SEND};
@@ -315,40 +354,34 @@ void paxq_test() {
   std::cout << "Circular Buffer Size after push_back: " << circbuff->size() << "\n";
 
   for (int i = 0; i < 10; i++) {
-    std::cout << "Child got: " << (*circbuff)[i].connection_id
-      << ", " << (*circbuff)[i].counter << ", " << (*circbuff)[i].type << "\n";
+    std::cout << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
+      << ", " << (unsigned long)(*circbuff)[i].counter << ", " << (*circbuff)[i].type << "\n";
   }
-
-  paxos_op op0 = paxq_front();
-  std::cout << "\n\nHead op: " << op0.connection_id << ", " << op0.counter << "\n";
-
-  paxos_op op1 = paxq_pop_front();
-  std::cout << "\n\nPopped op: " << op1.connection_id << ", " << op1.counter << "\n";
-  paxos_op op2 = paxq_pop_front();
-  std::cout << "\n\nPopped op: " << op2.connection_id << ", " << op2.counter << "\n";
-  paxos_op op3 = paxq_pop_front();
-  std::cout << "\n\nPopped op: " << op3.connection_id << ", " << op3.counter << "\n";
 
   std::cout << "\n\nCircular Buffer Size after pop: " << circbuff->size() << "\n";
   for (int i = 0; i < 10; i++) {
-    std::cout << "Child got: " << (*circbuff)[i].connection_id
-      << ", " << (*circbuff)[i].counter << "\n";
+    std::cout << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
+      << ", " << (unsigned long)(*circbuff)[i].counter << "\n";
   }  
-#endif
 }
 
 void paxq_print() {
+#ifndef DEBUG_PAXOS_OP_QUEUE
+  return;
+#endif
+
   if (paxq_size() == 0)
     return;
   //boost::circular_buffer::iterator itr = circbuff->begin();
   //std::cout << "paxq_print circbuff now " << circbuff << ", pself " << pthread_self() << std::endl;
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
-  std::cout << "paxq_print size now time (" << tnow.tv_sec << "." << tnow.tv_usec << "), size " << paxq_size() << std::endl;
+  std::cout << "paxq_print size now time (" << tnow.tv_sec << "." << tnow.tv_usec << "), size "
+    << paxq_size() << std::endl;
   for (size_t i = 0; i < paxq_size(); i++) {
     paxos_op &op = (*circbuff)[i];
-    std::cout << "paxq_print [" << i << "]: (" << op.connection_id
-    << ", " << op.counter << ", " << paxq_op_str[op.type] << ", " << op.value << ")\n";
+    std::cout << "paxq_print [" << i << "]: (" << (unsigned long)op.connection_id
+    << ", " << (unsigned long)op.counter << ", " << paxq_op_str[op.type] << ", " << op.value << ")\n";
   }
 }
 

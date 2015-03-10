@@ -80,8 +80,17 @@
 #  define _POSIX_C_SOURCE (199309L)
 #endif
 
-//#define _DEBUG_RECORDER
+//#define DEBUG_SCHED_WITH_PAXOS
+#ifdef DEBUG_SCHED_WITH_PAXOS
+#  define debugpaxos(fmt...) do {                   \
+     fprintf(stderr, fmt);                       \
+     fflush(stderr);                             \
+  } while(0)
+#else
+#  define debugpaxos(fmt...)
+#endif
 
+//#define _DEBUG_RECORDER
 #ifdef _DEBUG_RECORDER
 #  define dprintf(fmt...) do {                   \
      fprintf(stderr, "[%d] ", _S::self());        \
@@ -360,20 +369,20 @@ void RecorderRT<_S>::idle_cond_wait(void) {
   record_rdtsc_op("GET_TURN", "END", 2, NULL); \
   if (options::record_runtime_stat && pthread_self() != idle_th) \
     stat.nDetPthreadSyncOp++; \
-  sched_time = update_time(); \
-  if (_S::self() != 1) \
-    fprintf(stderr, "\n\nSOCKET_TIMER_START time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
-      sched_time.tv_sec, sched_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  sched_time = update_time();
+  //if (_S::self() != 1) \
+    //fprintf(stderr, "\n\nSOCKET_TIMER_START time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
+      //sched_time.tv_sec, sched_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 // SOCKET_TIMER_END is the same as SCHED_TIMER_END.
 #define SOCKET_TIMER_END(syncop, ...) \
   SCHED_TIMER_END_COMMON(syncop, __VA_ARGS__); \
   _S::putTurn();\
-  errno = backup_errno; \
-  if (_S::self() != 1) \
-    fprintf(stderr, "\n\nSOCKET_TIMER_END time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
-      syscall_time.tv_sec, syscall_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
+  errno = backup_errno;
+  //if (_S::self() != 1) \
+    //fprintf(stderr, "\n\nSOCKET_TIMER_END time <%ld.%ld> ins %p, pid %d, self %u, tid %d, turnCount %u, function %s\n", \
+      //syscall_time.tv_sec, syscall_time.tv_nsec, (void *)(long)ins, getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 
 
 #define SCHED_TIMER_THREAD_END(syncop, ...) \
@@ -557,7 +566,7 @@ template <typename _S>
 int RecorderRT<_S>::__pthread_detach(unsigned insid, int &error, pthread_t th) {
   BLOCK_TIMER_START(pthread_detach, insid, error, th);
   int ret = Runtime::__pthread_detach(insid, error, th);
-  fprintf(stderr, "WARN: Crane has not supported deterministic pthread_detach yet.");
+  debugpaxos( "WARN: Crane has not supported deterministic pthread_detach yet.");
   BLOCK_TIMER_END(syncfunc::pthread_detach, (uint64_t)ret);
   return ret;
 }
@@ -1916,10 +1925,12 @@ int RecorderRT<_S>::__accept(unsigned ins, int &error, int sockfd, struct sockad
     BLOCK_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
   } else {
     // this code should be put at after accept() is returned so that we can get the conns mapping.
+#ifdef DEBUG_SCHED_WITH_PAXOS
     struct timeval tnow;
     gettimeofday(&tnow, NULL);
-    fprintf(stderr, "Server thread pself %u tid %d accepted socket %d time <%ld.%ld>\n",
+    debugpaxos( "Server thread pself %u tid %d accepted socket %d time <%ld.%ld>\n",
       (unsigned)pthread_self(), _S::self(), ret, tnow.tv_sec, tnow.tv_usec);
+#endif
     assert (op.type == PAXQ_CONNECT && ret != -1);
     conns_add_pair(op.connection_id, ret);
     SOCKET_TIMER_END(syncfunc::accept, (uint64_t)ret, (uint64_t)from_port, (uint64_t) to_port);
@@ -1996,14 +2007,15 @@ ssize_t RecorderRT<_S>::__recv(unsigned ins, int &error, int sockfd, void *buf, 
     BLOCK_TIMER_START(recv, ins, error, sockfd, buf, len, flags);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd, NULL, (unsigned)len);
   }
   ssize_t ret = Runtime::__recv(ins, error, sockfd, buf, len, flags);
-  fprintf(stderr, "Server thread pself %u tid %d recv %u bytes (up to %u bytes) from socket %d\n",
+  debugpaxos( "Server thread pself %u tid %d recv %u bytes (up to %u bytes) from socket %d\n",
     (unsigned)pthread_self(), _S::self(), (unsigned)ret, (unsigned)len, sockfd);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::recv, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::recv, (uint64_t) ret);
   }
   return ret;
@@ -2017,12 +2029,13 @@ ssize_t RecorderRT<_S>::__recvfrom(unsigned ins, int &error, int sockfd, void *b
     BLOCK_TIMER_START(recvfrom, ins, error, sockfd, buf, len, flags, src_addr, addrlen);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd, NULL, (unsigned)len);
   }
   ssize_t ret = Runtime::__recvfrom(ins, error, sockfd, buf, len, flags, src_addr, addrlen);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
   }
   return ret;
@@ -2036,12 +2049,13 @@ ssize_t RecorderRT<_S>::__recvmsg(unsigned ins, int &error, int sockfd, struct m
     BLOCK_TIMER_START(recvmsg, ins, error, sockfd, msg, flags);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, sockfd, NULL, (unsigned)msg->msg_controllen);
   }
   ssize_t ret = Runtime::__recvmsg(ins, error, sockfd, msg, flags);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
   }
   return ret;
@@ -2060,12 +2074,13 @@ ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size
     BLOCK_TIMER_START(read, ins, error, fd, buf, count);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)count);
   }
   ssize_t ret = Runtime::__read(ins, error, fd, buf, count);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
   }
   return ret;
@@ -2092,12 +2107,13 @@ size_t RecorderRT<_S>::__fread(unsigned ins, int &error, void * ptr, size_t size
     BLOCK_TIMER_START(fread, ins, error, ptr, size, count, stream);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)size*count);
   }
   size_t ret = Runtime::__fread(ins, error, ptr, size, count, stream);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
   }
   return ret;
@@ -2116,12 +2132,13 @@ ssize_t RecorderRT<_S>::__pread(unsigned ins, int &error, int fd, void *buf, siz
     BLOCK_TIMER_START(pread, ins, error, fd, buf, count, offset);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)count);
   }
   ssize_t ret = Runtime::__pread(ins, error, fd, buf, count, offset);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
   }
   return ret;
@@ -2136,20 +2153,20 @@ ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *b
 
 void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds) {
   if (writefds || exceptfds)
-    fprintf(stderr, "WARN: server's select() writefds || exceptfds is not NULL.\n");
+    fprintf(stderr, "CRANE: server's select() writefds || exceptfds is not NULL.\n");
   int num_server_sock = 0;
   void *ret = (void *)(long)conns_get_port_from_tid(getpid());
   for (int i = 0; i < nfds; ++i) {
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     if (FD_ISSET(i, readfds) && conns_exist_by_server_sock(i)) {
-      fprintf(stderr, "Server's select() finds established socket pair <%lu, %d>.\n",
+      debugpaxos( "Server's select() finds established socket pair <%lu, %d>.\n",
         conns_get_conn_id(i), i);
       num_server_sock++;
       ret = (void *)(long)i;
     }
   }
   if (num_server_sock > 1) {
-    fprintf(stderr, "WARN: server's select() num_server_sock > 1. Use the universal port as wait obj\n");
+    fprintf(stderr, "CRANE: server's select() num_server_sock > 1. Use the universal port as wait obj\n");
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
@@ -2215,14 +2232,14 @@ void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     int server_sock = fds[i].fd;
     if (conns_exist_by_server_sock(server_sock)) {
-      fprintf(stderr, "Server's poll() finds established socket pair <%lu, %d>.\n",
+      debugpaxos( "Server's poll() finds established socket pair <%lu, %d>.\n",
         conns_get_conn_id(server_sock), server_sock);
       num_server_sock++;
       ret = (void *)(long)server_sock;
     }
   }
   if (num_server_sock > 1) {
-    fprintf(stderr, "WARN: server's poll() num_server_sock > 1. Use the universal port as wait obj\n");
+    fprintf(stderr, "CRANE: server's poll() num_server_sock > 1. Use the universal port as wait obj\n");
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
@@ -2256,7 +2273,7 @@ int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct so
     SOCKET_TIMER_START;
     struct sockaddr_in *si = (sockaddr_in*)address;
     unsigned port = (unsigned)ntohs(si->sin_port);
-    fprintf(stderr, "Server thread pself %u tid %d binds port %u\n",
+    debugpaxos( "Server thread pself %u tid %d binds port %u\n",
       (unsigned)pthread_self(), getpid(), port);
     conns_add_tid_port_pair(getpid(), port);//Currenty use piid instead of _S::self().
   }
@@ -2272,7 +2289,7 @@ int RecorderRT<_S>::__sigwait(unsigned ins, int &error, const sigset_t *set, int
 {
   BLOCK_TIMER_START(sigwait, ins, error, set, sig);
   int ret = Runtime::__sigwait(ins, error, set, sig);
-    fprintf(stderr, "WARN: Crane has not supported deterministic __sigwait yet.");
+    debugpaxos( "WARN: Crane has not supported deterministic __sigwait yet.");
   BLOCK_TIMER_END(syncfunc::sigwait, (uint64_t) ret);
   return ret;
 }
@@ -2291,12 +2308,13 @@ char *RecorderRT<_S>::__fgets(unsigned ins, int &error, char *s, int size, FILE 
     BLOCK_TIMER_START(fgets, ins, error, s, size, stream);
   } else {
     SOCKET_TIMER_START;
-    schedSocketOp(__FUNCTION__, DMT_RECV, fd);
+    schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)size);
   }
   char * ret = Runtime::__fgets(ins, error, s, size, stream);
   if (options::sched_with_paxos == 0) {
     BLOCK_TIMER_END(syncfunc::fgets, (uint64_t) ret);
   } else {
+    paxq_unlock();// Because there may be multiple send() from proxy that corresond to this ::__recv(), we must release the lock here for atomicity.
     SOCKET_TIMER_END(syncfunc::fgets, (uint64_t) ret);
   }
   return ret;
@@ -2372,7 +2390,7 @@ pid_t RecorderRT<_S>::__wait(unsigned ins, int &error, int *status)
 {
   BLOCK_TIMER_START(wait, ins, error, status);
   pid_t ret = Runtime::__wait(ins, error, status);
-  fprintf(stderr, "WARN: Crane has not supported deterministic __wait yet.");
+  debugpaxos( "WARN: Crane has not supported deterministic __wait yet.");
   BLOCK_TIMER_END(syncfunc::wait, (uint64_t)*status, (uint64_t)ret);
   return ret;
 }
@@ -2382,7 +2400,7 @@ pid_t RecorderRT<_S>::__waitpid(unsigned ins, int &error, pid_t pid, int *status
 {
   BLOCK_TIMER_START(waitpid, ins, error, pid, status, options);
   pid_t ret = Runtime::__waitpid(ins, error, pid, status, options);
-  fprintf(stderr, "WARN: Crane has not supported deterministic __waitpid yet.");
+  debugpaxos( "WARN: Crane has not supported deterministic __waitpid yet.");
   BLOCK_TIMER_END(syncfunc::waitpid, (uint64_t)pid, (uint64_t)*status, (uint64_t)options, (uint64_t)ret);
   return ret;
 }
@@ -2497,7 +2515,7 @@ int RecorderRT<_S>::__setsockopt(unsigned ins, int &error, int sockfd, int level
 template <typename _S>
 int RecorderRT<_S>::__pipe(unsigned ins, int &error, int pipefd[2])
 {
-  fprintf(stderr, "\n\nPARROT WARN: pipes are not fully supported yet!\n\n");
+  debugpaxos( "\n\nPARROT WARN: pipes are not fully supported yet!\n\n");
   int ret = Runtime::__pipe(ins, error, pipefd);
   return ret;
 }
@@ -2524,7 +2542,7 @@ int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
     conns_print();
     assert (conns_exist_by_server_sock(fd));
     uint64_t conn_id = conns_get_conn_id(fd);
-    fprintf(stderr, "Pself %u tid %d calls close(%d) with connection id %lu.\n",
+    debugpaxos( "Pself %u tid %d calls close(%d) with connection id %lu.\n",
       (unsigned)pthread_self(), _S::self(), fd, (unsigned long)conn_id);
     conns_erase_by_server_sock(fd);
   }
@@ -2534,7 +2552,7 @@ int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
   if (options::sched_with_paxos == 1) {
     struct timeval tnow;
     gettimeofday(&tnow, NULL);
-    fprintf(stderr, "Server thread pself %u tid %d closed socket %d time <%ld.%ld>\n",
+    debugpaxos( "Server thread pself %u tid %d closed socket %d time <%ld.%ld>\n",
       (unsigned)pthread_self(), _S::self(), ret, tnow.tv_sec, tnow.tv_usec);
     SOCKET_TIMER_END(syncfunc::close, (uint64_t) ret);
   }  
@@ -2649,19 +2667,27 @@ char *RecorderRT<_S>::__strtok(unsigned ins, int &error, char * str, const char 
 }
 
 /** Pop all send operations with the conn_id. **/
-void popSendOps(uint64_t conn_id) { 
+void popSendOps(uint64_t conn_id, unsigned recv_len) { 
   unsigned num_popped = 0;
-  assert(paxq_size() > 0);
-  paxos_op op = paxq_front();
+  unsigned nbytes_recv = 0;
+  const uint64_t delete_conn_id = (uint64_t)-1;
+  assert(paxq_size() > 0 && recv_len != 0);
+  paxos_op op = paxq_get_op(0);
   assert(op.connection_id = conn_id && op.type == PAXQ_SEND);
-  while (op.connection_id == conn_id && op.type == PAXQ_SEND) {
-    paxq_pop_front(1);
-    num_popped++;
-    if (paxq_size() == 0)
-      break;
-    op = paxq_front();
+  for (size_t i = 0; i < paxq_size(); i++) {// First pass, go over the whole pax queue and mark the deleted ones.
+    op = paxq_get_op(i);
+    if(op.connection_id == conn_id && op.type == PAXQ_SEND) {
+      if (nbytes_recv + op.value >= recv_len) // If the server's recv() buffer is full, just stop.
+        break;
+      num_popped++;
+      nbytes_recv += op.value;
+      debugpaxos("op deleted send value %u\n", op.value);
+      paxq_set_conn_id(i, delete_conn_id); // Mark as deleted of the i th element.
+    }
   }
-  fprintf(stderr, "Popped %u send operations\n", num_popped);
+  paxq_delete_ops(delete_conn_id, num_popped);
+  debugpaxos("popSendOps() pself %u, recv(up to %u bytes), popped %u PAXQ_SEND operations for connection %lu, actual recv %u bytes\n",
+    PSELF, recv_len, num_popped, (unsigned long)conn_id, nbytes_recv);
 }
 
 /* A paxos operation queue from the ab client.
@@ -2675,15 +2701,17 @@ paxq_print [6]: (1425233714, 3, CLOSE)
 paxq_print [7]: (70144710450, 3, CLOSE)
 */
 template <typename _S>
-paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd, void *selectWaitObj) {
+paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd,
+  void *selectWaitObj, unsigned recvLen) {
   // Debug info.
+  assert(options::sched_with_paxos == 1);
+#ifdef DEBUG_SCHED_WITH_PAXOS
   struct timeval tnow;
   if (_S::self() >= 2) { 
     gettimeofday(&tnow, NULL);
     fprintf(stderr, "ENTER schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
       tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
   }
-  assert(options::sched_with_paxos == 1);
   if (syncType != DMT_REG_SYNC) {
     assert(sockFd > 0);
     paxq_lock();
@@ -2691,14 +2719,14 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
     paxq_print();
     paxq_unlock();
   }
-
+#endif
 
   paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
   paxq_lock();
   if (syncType == DMT_REG_SYNC) {
     while (conns_get_conn_id_num() > 0) {
       if (paxq_size() > 0) { // If has paxos op, check whether it is PAXQ_NOP.
-        op = paxq_front();
+        op = paxq_get_op(0);
         if (op.type != PAXQ_NOP) // If it is not PAXQ_NOP, just move forward to signal the right thread to process it.
           break;
         else { // If it is PAXQ_NOP, just tick the logical clock to consume this NOP.
@@ -2713,12 +2741,14 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
             when the second (and real) operation arrives, but our target logical clock is deterministic. **/
             op = paxq_pop_front(6);
             unsigned clock_left = op.value;
+            debugpaxos( "Pself %u tid %d, fast forward logical clock from %u to %u\n",
+              PSELF, _S::self(), _S::turnCount, _S::turnCount + clock_left + 1);
             _S::incTurnCount(clock_left); // This operation is safe because current thread is holding the global turn.
           } else {
             /** Now current thread has "consumed and poped one socket operation",
             current thread can just leave this function and call the actual sync operation. **/
             unsigned clk = paxq_dec_front_value();
-            fprintf(stderr, "Pself %u tid %d, turnCount %u, decrease PAX_NOP clock: %u\n",
+            debugpaxos("Pself %u tid %d, turnCount %u, decrease PAX_NOP clock: %u\n",
               PSELF, _S::self(), _S::turnCount, clk);
             goto algo_exit;
           }
@@ -2726,7 +2756,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       } else { /** Busy wait until paxq is non empty. We hope this don't happen. **/
         paxq_unlock();
         sched_yield();
-        fprintf(stderr, "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) busy wait...\n",
+        debugpaxos( "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) busy wait...\n",
           (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd);
         paxq_lock();
       }
@@ -2734,7 +2764,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
 
     /** We need this if check, because at this moment it could be that the number of connections is 0. **/
     if (paxq_size() > 0) {
-      op = paxq_front();
+      op = paxq_get_op(0);
       assert(op.type != PAXQ_NOP);
       /** No matter what type (CONNECT, SEND, or CLOSE) from the paxos queue, 
       we must wake up threads waiting on the port, because a server thread may wait
@@ -2777,14 +2807,16 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           operation following the select() to pop the paxos operation (see above code). */
           break;
         } else {
-          op = paxq_front();
+          op = paxq_get_op(0);
           if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
             /** A recv() at server side may correspond to multiple send() at client side. **/
-            popSendOps(op.connection_id); 
+            popSendOps(op.connection_id, recvLen); 
             if (paxq_size() == 0) {
               paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
             }
-            break;
+            /** We must exit with the lock held so that the actual ::__recv() is atomic with the PAXQ_SEND
+            on proxy side. We will do the paxq_unlock() after the actual ::__recv() returns. **/
+            goto algo_exit_without_unlock;
           } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
             paxq_pop_front(4);
             if (paxq_size() == 0) {
@@ -2793,7 +2825,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
             break;
           } else { /* Current server thread's socket operation does not match the paxos head
             operation, just go back to _S::wait(). */
-            fprintf(stderr, "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) \
+            debugpaxos("Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) \
               does not match paxos op type %d, goes back to _S::wait().\n",
               (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd, (int)op.type);
           }
@@ -2805,11 +2837,17 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
 
 algo_exit:
   paxq_unlock();
+
+algo_exit_without_unlock:
+
+#ifdef DEBUG_SCHED_WITH_PAXOS
   if (_S::self() >= 2) {
     gettimeofday(&tnow, NULL);
     fprintf(stderr, "LEAVE schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
       tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
   }
+#endif
+
   return op;
 }
 

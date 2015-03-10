@@ -55,9 +55,6 @@ Serializer::Serializer():
 
 unsigned Serializer::incTurnCount(unsigned delta) { 
   unsigned newCnt = turnCount + 1 + delta;
-  if (delta > 0)
-    fprintf(stderr, "Pself %u fast forward logical clock from %u to %u\n",
-      (unsigned)pthread_self(), turnCount, newCnt);
   turnCount = newCnt;
   if (options::log_sync)
     fprintf(logger, "%d %u\n", (int) self(), turnCount);

@@ -37,7 +37,7 @@ typedef struct {
   uint64_t counter;
   PAXOS_OP_TYPE type;
   unsigned value; /** This field means "port" for PAXQ_CONNECT, "logical clock" 
-  for PAXQ_NOP, and invalid for all the other types of paxos operations. **/
+  for PAXQ_NOP, and number of actual bytes sent for PAXQ_SEND. **/
 } paxos_op;  
 
 
@@ -62,14 +62,17 @@ void paxq_create_shared_mem();
 void paxq_open_shared_mem(int node_id);
 void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
-paxos_op paxq_front();
+paxos_op paxq_get_op(unsigned index);
 unsigned paxq_dec_front_value();
 paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();
 void paxq_lock();
 void paxq_unlock();
+void paxq_delete_ops(uint64_t conn_id, unsigned num_delete);
+void paxq_set_conn_id(unsigned index, uint64_t new_conn_id);
 void paxq_test();
 void paxq_print();
+
 
 #ifdef __cplusplus
 }
