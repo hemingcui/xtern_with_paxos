@@ -566,7 +566,7 @@ template <typename _S>
 int RecorderRT<_S>::__pthread_detach(unsigned insid, int &error, pthread_t th) {
   BLOCK_TIMER_START(pthread_detach, insid, error, th);
   int ret = Runtime::__pthread_detach(insid, error, th);
-  debugpaxos( "WARN: Crane has not supported deterministic pthread_detach yet.");
+  fprintf(stderr, "CRANE: executes pthread_detach.\n");
   BLOCK_TIMER_END(syncfunc::pthread_detach, (uint64_t)ret);
   return ret;
 }
@@ -1643,6 +1643,12 @@ void RecorderRT<_S>::nonDetBarrierEnd(int bar_id, int cnt) {
 
 template <typename _S>
 void RecorderRT<_S>::threadDetach() {
+  //BLOCK_TIMER_START(pthread_detach, 0, 0, pthread_self());
+  // Below code is just the same as BLOCK_TIMER_START, write in this form to pass compiler.
+  if (_S::interProStart()) {
+    _S::block();
+  }
+  fprintf(stderr, "CRANE: pid %d tid %d pself %u is detached by %s() hint.\n", getpid(), _S::self(), PSELF, __FUNCTION__);
 }
 
 template <typename _S>
@@ -2289,7 +2295,7 @@ int RecorderRT<_S>::__sigwait(unsigned ins, int &error, const sigset_t *set, int
 {
   BLOCK_TIMER_START(sigwait, ins, error, set, sig);
   int ret = Runtime::__sigwait(ins, error, set, sig);
-    debugpaxos( "WARN: Crane has not supported deterministic __sigwait yet.");
+  debugpaxos( "WARN: pid %d tid %d Crane has not supported deterministic %s() yet.\n", getpid(), _S::self(), __FUNCTION__);
   BLOCK_TIMER_END(syncfunc::sigwait, (uint64_t) ret);
   return ret;
 }
@@ -2390,7 +2396,7 @@ pid_t RecorderRT<_S>::__wait(unsigned ins, int &error, int *status)
 {
   BLOCK_TIMER_START(wait, ins, error, status);
   pid_t ret = Runtime::__wait(ins, error, status);
-  debugpaxos( "WARN: Crane has not supported deterministic __wait yet.");
+  debugpaxos( "WARN: pid %d tid %d Crane has not supported deterministic %s() yet.\n", getpid(), _S::self(), __FUNCTION__);
   BLOCK_TIMER_END(syncfunc::wait, (uint64_t)*status, (uint64_t)ret);
   return ret;
 }
@@ -2400,7 +2406,7 @@ pid_t RecorderRT<_S>::__waitpid(unsigned ins, int &error, pid_t pid, int *status
 {
   BLOCK_TIMER_START(waitpid, ins, error, pid, status, options);
   pid_t ret = Runtime::__waitpid(ins, error, pid, status, options);
-  debugpaxos( "WARN: Crane has not supported deterministic __waitpid yet.");
+  debugpaxos( "WARN: pid %d tid %d Crane has not supported deterministic %s() yet.\n", getpid(), _S::self(), __FUNCTION__);
   BLOCK_TIMER_END(syncfunc::waitpid, (uint64_t)pid, (uint64_t)*status, (uint64_t)options, (uint64_t)ret);
   return ret;
 }
