@@ -54,22 +54,22 @@ THE PROXY, THE PAXOS_OP NEEDS TO HAVE A PID FIELD. OR WE NEED TO SEPARATE THE
 PAXOS OP QUEUE TO A "PER SERVER PROCESS" BASED.**/
 
 
-std::string lockFilePath;
 std::string sharedMemPath;
 std::string circularBufPath;
 std::string nodeRolePath;
 std::string nodeIntPath;
+std::string lockFilePath;
 
 void initPaths() {
   std::string homePath = getenv("HOME");
   assert(homePath != "");
   std::string userName = getenv("USER");
   assert(userName != "");
-  lockFilePath = homePath + LOCK_FILE_NAME;
   sharedMemPath = SEG_NAME + userName;
   circularBufPath = CB_NAME + userName;
   nodeRolePath = NODE_ROLE + userName;
   nodeIntPath = NODE_INT + userName;
+  lockFilePath = homePath + LOCK_FILE_NAME;
 }
 
 typedef std::tr1::unordered_map<uint64_t, int> conn_id_to_server_sock;
