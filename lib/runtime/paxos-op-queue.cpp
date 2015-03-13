@@ -1,3 +1,8 @@
+//#define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <signal.h>
 
 #include <iostream>
 #include <string>
@@ -12,6 +17,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
+#include <stdlib.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -23,9 +29,11 @@
 
 #define ELEM_CAPACITY 10000
 #define DELTA 100 // TBD: don't know why we couldn't get 100% of the shared mem.
-#define SEG_NAME "/PAXOS_OP_QUEUE"
-#define CB_NAME "/CIRCULAR_BUFFER"
-#define LOCK_FILE_NAME "/tmp/paxos_queue_file_lock"
+#define SEG_NAME "/PAXOS_OP_QUEUE-"
+#define CB_NAME "/CIRCULAR_BUFFER-"
+#define NODE_ROLE "/NODE_ROLE-"
+#define NODE_INT "/NODE_INT-"
+#define LOCK_FILE_NAME "/paxos_queue_file_lock"
 //#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
@@ -45,6 +53,24 @@ IF THE SERVER HAVE MULTIPLE PROCESSES AND EACH OF THEM THEY CONNECT TO
 THE PROXY, THE PAXOS_OP NEEDS TO HAVE A PID FIELD. OR WE NEED TO SEPARATE THE 
 PAXOS OP QUEUE TO A "PER SERVER PROCESS" BASED.**/
 
+
+std::string lockFilePath;
+std::string sharedMemPath;
+std::string circularBufPath;
+std::string nodeRolePath;
+std::string nodeIntPath;
+
+void initPaths() {
+  std::string homePath = getenv("HOME");
+  assert(homePath != "");
+  std::string userName = getenv("USER");
+  assert(userName != "");
+  lockFilePath = homePath + LOCK_FILE_NAME;
+  sharedMemPath = SEG_NAME + userName;
+  circularBufPath = CB_NAME + userName;
+  nodeRolePath = NODE_ROLE + userName;
+  nodeIntPath = NODE_INT + userName;
+}
 
 typedef std::tr1::unordered_map<uint64_t, int> conn_id_to_server_sock;
 typedef std::tr1::unordered_map<int, uint64_t> server_sock_to_conn_id;
@@ -192,59 +218,98 @@ void conns_print() {
 namespace bip = boost::interprocess;
 typedef bip::allocator<paxos_op, bip::managed_shared_memory::segment_manager> ShmemAllocatorCB;
 typedef boost::circular_buffer<paxos_op, ShmemAllocatorCB> MyCircularBuffer;
+typedef bip::allocator<int, bip::managed_shared_memory::segment_manager> ShmemAllocatorInt;
 bip::managed_shared_memory *segment = NULL;
 MyCircularBuffer *circbuff = NULL;
+bip::managed_shared_memory *nodeRoleSeg = NULL;
+int *nodeRole = NULL;
 int lockFileFd = 0;
 const char *paxq_op_str[5] = {"PAXQ_INVALID", "PAXQ_CONNECT", "PAXQ_SEND", "PAXQ_CLOSE", "PAXQ_NOP"};
+__thread int my_tid = -1;
+int proxyPid = -1;
 
 /** This function is called by the DMT runtime, because the eval.py starts it before the proxy. **/
 void paxq_create_shared_mem() {
-  std::cout << "Init shared memory " << (bip::shared_memory_object::remove(SEG_NAME) ?
-    "cleaned up: " : "not exist: " ) << SEG_NAME << "\n";
+  initPaths();
 
-  segment = new bip::managed_shared_memory(bip::create_only, SEG_NAME, (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
+  // Create the IPC circular buffer.
+  std::cout << "Init shared memory " << (bip::shared_memory_object::remove(sharedMemPath.c_str()) ?
+    "cleaned up: " : "not exist: " ) << sharedMemPath.c_str() << "\n";
+  segment = new bip::managed_shared_memory(bip::create_only, sharedMemPath.c_str(), (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
   static const ShmemAllocatorCB alloc_inst (segment->get_segment_manager());
-  circbuff = segment->construct<MyCircularBuffer>(CB_NAME)(ELEM_CAPACITY, alloc_inst);
+  circbuff = segment->construct<MyCircularBuffer>(circularBufPath.c_str())(ELEM_CAPACITY, alloc_inst);
   circbuff->clear();
   assert(circbuff->size() == 0);
   paxq_print();
 
-  lockFileFd = open(LOCK_FILE_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  // Create the IPC paxos role (current node is leader or not).
+  bip::shared_memory_object::remove(nodeRolePath.c_str());
+  nodeRoleSeg = new bip::managed_shared_memory(bip::create_only, nodeRolePath.c_str(), sizeof(int)*1024);
+  nodeRole = nodeRoleSeg->construct<int>(nodeIntPath.c_str())(10);
+  *nodeRole = ROLE_INVALID;
+  
+  // Create the IPC lock file.
+  lockFileFd = open(lockFilePath.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
   if (lockFileFd == -1) {
-    std::cout << "paxq_create_shared_memory file lock " << LOCK_FILE_NAME " open failed, errno " << errno << ".\n";
+    std::cout << "paxq_create_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
 
 /** This function is called by the proxy, because the eval.py starts the proxy after the server. . **/
 void paxq_open_shared_mem(int node_id) {
-  segment = new bip::managed_shared_memory(bip::open_only, SEG_NAME);
-  circbuff = segment->find<MyCircularBuffer>(CB_NAME).first;
-  lockFileFd = open(LOCK_FILE_NAME, O_RDWR, S_IRUSR | S_IWUSR);
+  initPaths();
+
+  // Open the IPC circular buffer.
+  segment = new bip::managed_shared_memory(bip::open_only, sharedMemPath.c_str());
+  circbuff = segment->find<MyCircularBuffer>(circularBufPath.c_str()).first;
+
+  // Open the IPC paxos role (current node is leader or not).
+  nodeRoleSeg = new bip::managed_shared_memory(bip::open_only, nodeRolePath.c_str());
+  nodeRole = nodeRoleSeg->find<int>(nodeIntPath.c_str()).first;
+  assert(*nodeRole == ROLE_INVALID);
+
+  // Open the IPC lock file.
+  lockFileFd = open(lockFilePath.c_str(), O_RDWR, S_IRUSR | S_IWUSR);
   if (lockFileFd == -1) {
-    std::cout << "paxq_open_shared_memory file lock " << LOCK_FILE_NAME " open failed, errno " << errno << ".\n";
+    std::cout << "paxq_open_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
 
-void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port) {
+void paxq_update_role(int is_leader) {
+  if (is_leader)
+    *nodeRole = ROLE_LEADER;
+  else
+    *nodeRole = ROLE_SECONDARY;
+}
+
+int paxq_role_is_leader() {
+  int role = *nodeRole;
+  assert(role != ROLE_INVALID);
+  int ret = (role == ROLE_LEADER);
+  DPRINT << "Current node is leader: " << ret << std::endl;
+  return ret;
+}
+
+void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value) {
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
   if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
-    std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+    std::cout << sharedMemPath << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
     if (with_lock) paxq_unlock();
     exit(1);
   }
-  paxos_op op = {conn_id, counter, t, port}; // TBD: is this OK for IPC shared-memory?
-  circbuff->insert(circbuff->begin(), op);      
+  paxos_op op = {conn_id, counter, t, value}; // TBD: is this OK for IPC shared-memory?
+  circbuff->insert(circbuff->begin(), op);   
   DPRINT << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
     << ">, now size " << paxq_size() << "\n";
   paxq_print();
   if (with_lock) paxq_unlock();
 }
 
-void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned value) {
+void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value) {
 #ifdef DEBUG_PAXOS_OP_QUEUE
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
@@ -254,7 +319,7 @@ void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_
 
   if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
-    std::cout << SEG_NAME << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+    std::cout << sharedMemPath << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
     if (with_lock) paxq_unlock();
     exit(1);
   }
@@ -269,7 +334,7 @@ paxos_op paxq_get_op(unsigned index) {
   return ret;
 }
 
-unsigned paxq_dec_front_value() {
+int paxq_dec_front_value() {
   assert(paxq_size() > 0);
   paxos_op &op = circbuff->front();
   assert(op.type == PAXQ_NOP);
@@ -283,6 +348,8 @@ paxos_op paxq_pop_front(int debugTag) {
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
   paxos_op op = paxq_get_op(0);
+  if (op.type == PAXQ_CONNECT)
+    paxq_set_proxy_pid(op.counter);
   circbuff->pop_front();
   DPRINT << "DEBUG TAG " << debugTag
     << ": paxq_pop_front time <" << tnow.tv_sec << "." << tnow.tv_usec 
@@ -298,11 +365,47 @@ size_t paxq_size() {
 }
 
 void paxq_lock() {
-  lockf(lockFileFd, F_LOCK, 0);
+  int ret = lockf(lockFileFd, F_LOCK, 0);
 }
 
 void paxq_unlock() {
-  lockf(lockFileFd, F_ULOCK, 0);
+  int ret = lockf(lockFileFd, F_ULOCK, 0);
+}
+
+void paxq_set_proxy_pid(int pid) {
+  if (proxyPid < 0) {
+    proxyPid = pid;
+    DPRINT << "Proxy Pid is " << proxyPid << std::endl;
+  }
+}
+
+void paxq_notify_proxy() {
+  DPRINT << "DMT server pid " << getpid() << " asks proxy pid "
+    << proxyPid << " for logical clocks." << std::endl;
+  assert(proxyPid > 0);
+  paxq_tkill(proxyPid, SIGUSR2);
+}
+
+// Proxy calls this function, and it must grabs the paxq lock first.
+void paxq_proxy_give_clocks() {
+  paxq_lock();
+  assert(paxq_size() > 0);
+  paxos_op &op = (*circbuff)[0];
+  if (op.type == PAXQ_NOP && op.value < 0) {
+    op.value = -1*op.value;
+    DPRINT << "Proxy pid " << getpid() << " gives " << op.value
+      << " logical clocks to DMT." << std::endl;
+  } else {
+    if (op.type != PAXQ_NOP) {
+      std::cout << "Proxy pid " << getpid() << " first op is not PAXQ_NOP." << std::endl;
+      paxq_print();
+      assert(false);
+    } else if (op.value > 0) {
+      std::cout << "Proxy pid " << getpid() << " first op is PAXQ_NOP but clock is already positive." << std::endl;
+      paxq_print();
+    }
+  }
+  paxq_unlock();
 }
 
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
@@ -321,7 +424,7 @@ void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
       if (op.connection_id == conn_id) {
 
 #ifdef DEBUG_PAXOS_OP_QUEUE
-        fprintf(stderr, "DEBUG TAG 1: paxq_pop_front time <%ld.%ld>: (%ld, %lu, %s, %u)\n",
+        fprintf(stderr, "DEBUG TAG 1: paxq_pop_front time <%ld.%ld>: (%ld, %lu, %s, %d)\n",
           tnow.tv_sec, tnow.tv_usec, (long)op.connection_id, (unsigned long)op.counter, paxq_op_str[op.type], op.value);
 #endif
 
@@ -339,10 +442,24 @@ void paxq_set_conn_id(unsigned index, uint64_t new_conn_id) {
   (*circbuff)[index].connection_id = new_conn_id;
 }
 
+int paxq_gettid() {
+  if (my_tid == -1)
+    return my_tid = syscall(SYS_gettid);
+  else
+    return my_tid;
+}
+
+void paxq_tkill(int tid, int sig) {
+  //std::cout << "paxq_tgkill(" << tgid << ", tid " << tid << ", sig " << sig << "):" <<  std::endl;
+  int ret = syscall(SYS_tkill, tid, sig);  
+  //std::cout << "paxq_tgkill ret " << ret << ", strerror " << strerror(errno) <<  std::endl;
+}
+
 void paxq_test() {
 #ifndef DEBUG_PAXOS_OP_QUEUE
   return;
 #endif
+
 
   std::cout << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
   for (int i = 0; i < ELEM_CAPACITY*2+123; i++) {

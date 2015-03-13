@@ -32,11 +32,17 @@ typedef enum {
   PAXQ_NOP
 } PAXOS_OP_TYPE;
 
+typedef enum {
+  ROLE_INVALID = 0,
+  ROLE_SECONDARY = 1,
+  ROLE_LEADER = 2,
+} NODE_ROLE;
+
 typedef struct {
   uint64_t connection_id;
   uint64_t counter;
   PAXOS_OP_TYPE type;
-  unsigned value; /** This field means "port" for PAXQ_CONNECT, "logical clock" 
+  int value; /** This field means "port" for PAXQ_CONNECT, "logical clock" 
   for PAXQ_NOP, and number of actual bytes sent for PAXQ_SEND. **/
 } paxos_op;  
 
@@ -60,16 +66,25 @@ void conns_print();
 /// APIs for the proxy-server paxos operation queue.
 void paxq_create_shared_mem();
 void paxq_open_shared_mem(int node_id);
-void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
-void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, unsigned port);
+void paxq_update_role(int is_leader);
+int paxq_role_is_leader();
+void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
+void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
 paxos_op paxq_get_op(unsigned index);
-unsigned paxq_dec_front_value();
+int paxq_dec_front_value();
 paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();
 void paxq_lock();
 void paxq_unlock();
+void paxq_set_proxy_pid(int pid);
+void paxq_notify_proxy();
+void paxq_proxy_give_clocks();
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete);
 void paxq_set_conn_id(unsigned index, uint64_t new_conn_id);
+int paxq_gettid();
+void paxq_tkill(int tid, int sig);
+
+
 void paxq_test();
 void paxq_print();
 

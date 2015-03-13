@@ -2687,7 +2687,7 @@ void popSendOps(uint64_t conn_id, unsigned recv_len) {
         break;
       num_popped++;
       nbytes_recv += op.value;
-      debugpaxos("op deleted send value %u\n", op.value);
+      debugpaxos("op deleted send value %d\n", op.value);
       paxq_set_conn_id(i, delete_conn_id); // Mark as deleted of the i th element.
     }
   }
@@ -2706,6 +2706,7 @@ paxq_print [5]: (70144710450, 2, SEND)
 paxq_print [6]: (1425233714, 3, CLOSE)
 paxq_print [7]: (70144710450, 3, CLOSE)
 */
+static bool hasAskClks = false; // This flag is to avoid asking proxy for clocks too frequently.
 template <typename _S>
 paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd,
   void *selectWaitObj, unsigned recvLen) {
@@ -2730,45 +2731,50 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
   paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
   paxq_lock();
   if (syncType == DMT_REG_SYNC) {
+    int loopCnt = 0;
     while (conns_get_conn_id_num() > 0) {
       if (paxq_size() > 0) { // If has paxos op, check whether it is PAXQ_NOP.
         op = paxq_get_op(0);
         if (op.type != PAXQ_NOP) // If it is not PAXQ_NOP, just move forward to signal the right thread to process it.
           break;
-        else { // If it is PAXQ_NOP, just tick the logical clock to consume this NOP.
-          if (op.value == 1) {
-            // If server threads have consumed all clocks of the NOP, then pop this paxos op and recheck the paxoq queue.
-            paxq_pop_front(5);
-          } else if (paxq_size() >= 2) {
-            /** If real paxos operations have come (paxq_size() >= 2), then fast forward. 
-            Note that we can naively pop the NOP and leave, because at this moment our logical clock
-            is "nondeterministic" (e.g., let's say the clock when inserts this NOP is 1000, current logical clock 
-            can be 1993 or 1994 depending on when the next real paxos operation arrives, and target is 3000)
-            when the second (and real) operation arrives, but our target logical clock is deterministic. **/
-            op = paxq_pop_front(6);
-            unsigned clock_left = op.value;
-            debugpaxos( "Pself %u tid %d, fast forward logical clock from %u to %u\n",
-              PSELF, _S::self(), _S::turnCount, _S::turnCount + clock_left + 1);
-            _S::incTurnCount(clock_left); // This operation is safe because current thread is holding the global turn.
-          } else {
+        else { // If it is PAXQ_NOP..
+          if (op.value > 0) { //If the proxy has given DMT clocks.
+            int clk = 0;
+            if (op.value == 1) {
+              paxq_pop_front(5);
+              hasAskClks = false;
+            } else
+              clk = paxq_dec_front_value();
             /** Now current thread has "consumed and poped one socket operation",
             current thread can just leave this function and call the actual sync operation. **/
-            unsigned clk = paxq_dec_front_value();
-            debugpaxos("Pself %u tid %d, turnCount %u, decrease PAX_NOP clock: %u\n",
-              PSELF, _S::self(), _S::turnCount, clk);
+            debugpaxos("Pself %u tid %d, turnCount %u, dec PAXQ_NOP clock: %d\n", PSELF, _S::self(), _S::turnCount, clk);
             goto algo_exit;
           }
         }
-      } else { /** Busy wait until paxq is non empty. We hope this don't happen. **/
-        paxq_unlock();
-        sched_yield();
-        debugpaxos( "Server thread pself %u tid %d schedSocketOp(syncType %s, sockFd %ld) busy wait...\n",
-          (unsigned)pthread_self(), _S::self(), charSyncType[syncType], sockFd);
-        paxq_lock();
+      }
+
+      assert(paxq_size() == 0 || (op = paxq_get_op(0) && op.type == PAXQ_NOP && op.value < 0));
+      /** Busy wait, and sends a request (signal) to proxy for more clocks. **/
+      paxq_unlock();
+      ::usleep(100);
+      loopCnt++;
+      paxq_lock();
+      if ((loopCnt > 3 && !hasAskClks) || loopCnt > 10000) {
+        loopCnt = 0;
+        if (paxq_role_is_leader()) { // If current node is leader.
+          if (paxq_size() == 0) {
+            paxq_insert_front(0/*Lock is already held*/, 0, 0, PAXQ_NOP,
+              -1*options::sched_with_paxos_nops*conns_get_conn_id_num());// Negative. Proxy will make it positive.
+          }
+          paxq_notify_proxy();
+          hasAskClks = true;
+        }
+        debugpaxos( "Server pself %u tid %d schedSocketOp(%s, %ld) asks proxy for clks, loopCnt %d\n",
+          PSELF, _S::self(), charSyncType[syncType], sockFd, loopCnt);
       }
     }
 
-    /** We need this if check, because at this moment it could be that the number of connections is 0. **/
+    assert(paxq_size() > 0 || conns_get_conn_id_num() == 0);
     if (paxq_size() > 0) {
       op = paxq_get_op(0);
       assert(op.type != PAXQ_NOP);
@@ -2785,9 +2791,6 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
         assert(conns_exist_by_conn_id(op.connection_id));
         conns_erase_by_conn_id(op.connection_id);
         paxq_pop_front(2);
-        if (conns_get_conn_id_num() > 0 && paxq_size() == 0) { // For close(), we only need to assign the logical clock only if there are still alive connections.
-          paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
-        }
       }
     }
   } else {/** This is a blocking socket operation. **/
@@ -2817,17 +2820,11 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
             /** A recv() at server side may correspond to multiple send() at client side. **/
             popSendOps(op.connection_id, recvLen); 
-            if (paxq_size() == 0) {
-              paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
-            }
             /** We must exit with the lock held so that the actual ::__recv() is atomic with the PAXQ_SEND
             on proxy side. We will do the paxq_unlock() after the actual ::__recv() returns. **/
             goto algo_exit_without_unlock;
           } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
             paxq_pop_front(4);
-            if (paxq_size() == 0) {
-              paxq_insert_front(0, 0, 0, PAXQ_NOP, options::sched_with_paxos_nops); /** Assign the logical clock for the next (future) paxos operation. **/
-            }
             break;
           } else { /* Current server thread's socket operation does not match the paxos head
             operation, just go back to _S::wait(). */
