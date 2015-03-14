@@ -2761,7 +2761,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       debugpaxos( "Server pself %u tid %d schedSocketOp(%s, %ld) BUSY WAITS, loopCnt %d\n",
         PSELF, _S::self(), charSyncType[syncType], sockFd, loopCnt);
       paxq_lock();
-      if ((loopCnt > 3 && !hasAskClks) || loopCnt > 10000) { // Just some temporary parameters for performance.
+      if ((loopCnt > 20 && !hasAskClks) || loopCnt > 10000) { // Just some temporary parameters for performance.
         loopCnt = 0;
         if (paxq_role_is_leader()) { // If current node is leader.
           if (paxq_size() == 0) {

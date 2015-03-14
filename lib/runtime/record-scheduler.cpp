@@ -74,7 +74,12 @@ void RRScheduler::wait_t::wait() {
     with very small overhead (2~4 busywait timeouts) on bug00. If we choose 4e4, then there
     would be hundredsof timeouts.
     **/
-    const long waitCnt = 4e5;
+    /** Heming: 2015-3-14: changed to be 4e8, because 
+    in Paxos joint scheduling, some threads have to busy wait
+    and then wait for the logical clocks from proxy, which could
+    take about 1ms (paxos consensus). We enlarge this number to
+    avoid context switch for DMT threads. **/
+    const long waitCnt = 4e8;
     volatile long i = 0;
     while (!wakenUp && i < waitCnt) {
       sched_yield();
