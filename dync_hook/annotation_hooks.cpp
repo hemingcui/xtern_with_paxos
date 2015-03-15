@@ -122,7 +122,9 @@ extern "C" void tern_set_base_timeval(struct timeval *tv){
 #ifndef __SPEC_HOOK_tern_detach
 extern "C" void tern_detach(){
 #ifdef __USE_TERN_RUNTIME
-  if (Space::isApp() && options::DMT && options::enforce_annotations) {
+  /* This hint is for apache-like programs (a thread calls read() on a IPC pipe and never returns unless server is killed).
+  So we do not need this options::enforce_annotations here (i.e., we must always enable it in Parrot for correctness). */
+  if (Space::isApp() && options::DMT/* && options::enforce_annotations*/) {
     tern_detach_real();
   }
 #endif

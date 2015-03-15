@@ -1261,8 +1261,7 @@ int RecorderRT<_S>::pthreadCondTimedWait(unsigned ins, int &error,
 
   timespec cur_time, rel_time;
   if (my_base_time.tv_sec == 0) {
-    fprintf(stderr, "WARN: pthread_cond_timedwait has a non-det timeout. \
-    Please add tern_set_base_timespec().\n");
+    fprintf(stderr, "pthread_cond_timedwait is called. Please add tern_set_base_timespec() if possible.\n");
     clock_gettime(CLOCK_REALTIME, &cur_time);
   } else {
     cur_time.tv_sec = my_base_time.tv_sec;
