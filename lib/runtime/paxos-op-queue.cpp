@@ -80,6 +80,7 @@ conn_id_to_server_sock conn_id_map;
 server_sock_to_conn_id server_sock_map;
 server_port_to_tid server_port_map;
 tid_to_server_port tid_map;
+int binded_socket = -1; /** The socket in the bind() function. **/
 
 void conns_init() {
   conn_id_map.clear();
@@ -156,7 +157,7 @@ size_t conns_get_conn_id_num() {
   return conn_id_map.size();
 }
 
-void conns_add_tid_port_pair(int tid, unsigned port) {
+void conns_add_tid_port_pair(int tid, unsigned port, int socket) {
   //fprintf(stderr, "conns_add_tid_port_map insert pair (%d, %u)\n", tid, port);
   /** Heming: these two asserts are to guarantee an assumption that a server application only
   listens on one port, not multiple ports. Thus, a bind() operation of is called
@@ -166,6 +167,15 @@ void conns_add_tid_port_pair(int tid, unsigned port) {
   assert(tid_map.find(tid) == tid_map.end());
   server_port_map[port] = tid;
   tid_map[tid] = port;
+  assert(binded_socket == -1 && "One process should call only one bind().");
+  binded_socket = socket;
+}
+
+int conns_is_binded_socket(int socket) {
+  if (binded_socket == -1)
+    return false;
+  else
+    return binded_socket == socket;
 }
 
 int conns_get_tid_from_port(unsigned port) {

@@ -328,6 +328,8 @@ void RRScheduler::wakeup()
 void RRScheduler::putTurn(bool at_thread_end)
 {
   int tid = self();
+  //if (tid == 2)
+    //runq.dbg_print(__FUNCTION__);
   assert(tid>=0 && tid < Scheduler::nthread);
   assert(tid == runq.front());
   bool hasPoppedFront = false;
@@ -395,7 +397,7 @@ void RRScheduler::signal(void *chan, bool all)
     int tid = *prv;
     assert(tid >=0 && tid < Scheduler::nthread);
     if(waits[tid].chan == chan) {
-      dprintf("RRScheduler: %d signals %d(%p)\n", self(), tid, chan);
+      dprintf("RRScheduler: %d signals tid %d(%p)\n", self(), tid, chan);
       waits[tid].reset();
       waitq.erase(prv);
       runq.push_back(tid);

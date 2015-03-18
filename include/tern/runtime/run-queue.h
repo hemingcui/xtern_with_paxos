@@ -401,6 +401,11 @@ public:
   inline void print(const char *tag) {
     //fprintf(stderr, "\n\n OP: %s: elements set size %u\n", tag, (unsigned)elements.size());
     return;
+    dbg_print(tag);
+  }
+
+  inline void dbg_print(const char *tag) {
+    //fprintf(stderr, "\n\n OP: %s: elements set size %u\n", tag, (unsigned)elements.size());
 #ifdef DEBUG_RUN_QUEUE
     int i = 0;
     fprintf(stderr, "\n\n OP: %s: elements set size %u\n", tag, (unsigned)elements.size());
