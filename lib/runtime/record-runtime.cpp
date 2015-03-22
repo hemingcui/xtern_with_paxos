@@ -2608,11 +2608,15 @@ int RecorderRT<_S>::__close(unsigned ins, int &error, int fd)
     SOCKET_TIMER_START;
     paxq_print();
     conns_print();
-    assert (conns_exist_by_server_sock(fd));
-    uint64_t conn_id = conns_get_conn_id(fd);
-    debugpaxos( "Pself %u tid %d calls close(%d) with connection id %lu.\n",
-      (unsigned)pthread_self(), _S::self(), fd, (unsigned long)conn_id);
-    conns_erase_by_server_sock(fd);
+    if (conns_exist_by_server_sock(fd)) {
+      uint64_t conn_id = conns_get_conn_id(fd);
+      debugpaxos( "Pself %u tid %d calls close(%d) with connection id %lu.\n",
+        (unsigned)pthread_self(), _S::self(), fd, (unsigned long)conn_id);
+      conns_erase_by_server_sock(fd);
+    } else {
+      fprintf(stderr, "Pself %u tid %d calls close(%d) with no connection id. Should be an outgoing socket, fine.\n",
+        (unsigned)pthread_self(), _S::self(), fd);
+    }
   }
   ret = Runtime::__close(ins, error, fd);
   if (options::record_runtime_stat)
