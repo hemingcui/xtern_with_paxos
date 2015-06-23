@@ -50,6 +50,7 @@ extern "C" {
   void pcs_enter();
   void pcs_exit();
   void tern_detach();
+  void tern_disable_sched_paxos();
   void pcs_barrier_exit(int bar_id, int cnt);
 
   /// Set thread local base time. This is for pthread_cond_timedwait(), sem_timedwait() and pthread_mutex_timedlock().

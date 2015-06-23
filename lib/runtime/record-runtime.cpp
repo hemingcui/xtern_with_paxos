@@ -1654,6 +1654,13 @@ void RecorderRT<_S>::threadDetach() {
 }
 
 template <typename _S>
+void RecorderRT<_S>::threadDisableSchedPaxos() {
+  options::sched_with_paxos = 0;
+  fprintf(stderr, "CRANE: pid %d tid %d pself %u by %s(): disable sched with paxos, because this process is not worker process.\n",
+    getpid(), _S::self(), PSELF, __FUNCTION__);fflush(stderr);
+}
+
+template <typename _S>
 void RecorderRT<_S>::setBaseTime(struct timespec *ts) {
   // Do not need to enforce any turn here.
   dprintf("setBaseTime, tid %d, base time %ld.%ld\n", _S::self(), (long)ts->tv_sec, (long)ts->tv_nsec);
@@ -2337,7 +2344,7 @@ int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct so
     SOCKET_TIMER_START;
     struct sockaddr_in *si = (sockaddr_in*)address;
     unsigned port = (unsigned)ntohs(si->sin_port);
-    debugpaxos( "Server thread pself %u tid %d binds port %u\n",
+    debugpaxos( "Server thread pself %u pid/tid %d binds port %u\n",
       (unsigned)pthread_self(), getpid(), port);
     conns_add_tid_port_pair(getpid(), port, socket);//Currenty use piid instead of _S::self().
   }

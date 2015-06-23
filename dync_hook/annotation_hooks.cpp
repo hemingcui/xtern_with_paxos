@@ -132,6 +132,19 @@ extern "C" void tern_detach(){
 }
 #endif
 
+#ifndef __SPEC_HOOK_tern_disable_sched_paxos
+extern "C" void tern_disable_sched_paxos(){
+#ifdef __USE_TERN_RUNTIME
+  /* This hint is for apache-like programs (a thread calls read() on a IPC pipe and never returns unless server is killed).
+  So we do not need this options::enforce_annotations here (i.e., we must always enable it in Parrot for correctness). */
+  if (Space::isApp() && options::DMT/* && options::enforce_annotations*/) {
+    tern_disable_sched_paxos_real();
+  }
+#endif
+  // If not runnning with xtern, NOP.
+}
+#endif
+
 #ifndef __SPEC_HOOK_tern_non_det_barrier_end
 extern "C" void pcs_barrier_exit(int bar_id, int cnt){
 #ifdef __USE_TERN_RUNTIME

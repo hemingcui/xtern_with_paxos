@@ -89,6 +89,7 @@ struct Runtime {
   virtual void nonDetStart() = 0;
   virtual void nonDetEnd() = 0;
   virtual void threadDetach() = 0;
+  virtual void threadDisableSchedPaxos() = 0;
   virtual void nonDetBarrierEnd(int bar_id, int cnt) = 0;
   virtual void setBaseTime(struct timespec *ts) = 0;
 

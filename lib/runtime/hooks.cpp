@@ -389,6 +389,14 @@ void tern_detach_real() {
   errno = error;
 }
 
+void tern_disable_sched_paxos_real() {
+  int error = errno;
+  Space::enterSys();
+  Runtime::the->threadDisableSchedPaxos();
+  Space::exitSys();
+  errno = error;
+}
+
 void tern_set_base_time_real(struct timespec *ts) {
   int error = errno;
   Space::enterSys();

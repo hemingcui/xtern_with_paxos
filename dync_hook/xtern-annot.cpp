@@ -64,6 +64,10 @@ void tern_detach() {
   //fprintf(stderr, "Non-deterministic tern_detach\n");
 }
 
+void tern_disable_sched_paxos() {
+  //fprintf(stderr, "Non-deterministic tern_disable_sched_paxos\n");
+}
+
 void pcs_barrier_exit(int bar_id, int cnt) {
   //fprintf(stderr, "Non-deterministic pcs_barrier_exit\n");
 }

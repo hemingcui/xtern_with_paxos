@@ -43,9 +43,9 @@ extern "C" {
 using namespace std;
 
 #ifdef DEBUG_PAXOS_OP_QUEUE
-#define DPRINT std::cout
+#define DPRINT std::cerr << "Pid " << getpid() << ", PSELF " << (unsigned)pthread_self() << ": "
 #else
-#define DPRINT if (false) std::cout
+#define DPRINT if (false) std::cerr
 #endif
 
 /** TBD: CURRENT WE ASSUME THE SERVER HAS ONLY ONE PROCESS TALKING TO THE PROXY.
@@ -186,8 +186,8 @@ int conns_get_tid_from_port(unsigned port) {
 }
 
 unsigned conns_get_port_from_tid(int tid) {
-  //fprintf(stderr, "conns_get_port_from_tid query from tid %d\n", tid);
   assert(tid_map.find(tid) != tid_map.end());
+  //fprintf(stderr, "conns_get_port_from_tid: pid %d, tid %d, return port %u\n", getpid(), tid, tid_map[tid]);
   return tid_map[tid];
 }
 
