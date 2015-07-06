@@ -155,3 +155,22 @@ extern "C" void pcs_barrier_exit(int bar_id, int cnt){
   // If not runnning with xtern, NOP.
 }
 #endif
+
+#ifndef __SPEC_HOOK_tern_init_affinity
+static int num_thread_hint = 1;
+extern "C" void tern_init_affinity(){
+#ifdef __USE_TERN_RUNTIME
+  /* This hint is just for init the affinity of threads, not an essential part of RepBox,
+  but critical for getting stable evaluation performance results. */
+  if (Space::isApp() && options::DMT/* && options::enforce_annotations*/) {
+    num_thread_hint++; // Just hint, do not need lock.
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(num_thread_hint, &mask);
+    assert (sched_setaffinity(0, sizeof(mask), &mask) == 0);
+  }
+#endif
+  // If not runnning with xtern, NOP.
+}
+#endif
+

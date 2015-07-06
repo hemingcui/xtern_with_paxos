@@ -72,6 +72,10 @@ void pcs_barrier_exit(int bar_id, int cnt) {
   //fprintf(stderr, "Non-deterministic pcs_barrier_exit\n");
 }
 
+void tern_init_affinity() {
+  //fprintf(stderr, "Non-deterministic tern_init_affinity\n");
+}
+
 #ifdef __cplusplus
 }
 #endif

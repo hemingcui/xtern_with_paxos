@@ -52,6 +52,7 @@ extern "C" {
   void tern_detach();
   void tern_disable_sched_paxos();
   void pcs_barrier_exit(int bar_id, int cnt);
+  void tern_init_affinity();
 
   /// Set thread local base time. This is for pthread_cond_timedwait(), sem_timedwait() and pthread_mutex_timedlock().
   void tern_set_base_timespec(struct timespec *ts);
