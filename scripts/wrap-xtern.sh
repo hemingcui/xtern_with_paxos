@@ -3,4 +3,5 @@
 # with the full command line from this script. This script is for valgrind to execute with xtern.
 
 #LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so $*
+source ~/.bashrc
 LD_PRELOAD=$XTERN_ROOT/dync_hook/interpose.so $*
