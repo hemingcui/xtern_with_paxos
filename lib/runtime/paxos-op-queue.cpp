@@ -61,7 +61,7 @@ std::string nodeIntPath;
 std::string lockFilePath;
 
 void initPaths() {
-  std::string homePath = "/dev/shm/"//getenv("HOME");
+  std::string homePath = "/dev/shm/";//getenv("HOME");
   std::string userName = getenv("USER");
   assert(userName != "");
   homePath = homePath + userName;
