@@ -33,7 +33,7 @@
 #define CB_NAME "/CIRCULAR_BUFFER-"
 #define NODE_ROLE "/NODE_ROLE-"
 #define NODE_INT "/NODE_INT-"
-#define LOCK_FILE_NAME "/paxos_queue_file_lock"
+#define LOCK_FILE_NAME "paxos_queue_file_lock"
 //#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
@@ -61,10 +61,10 @@ std::string nodeIntPath;
 std::string lockFilePath;
 
 void initPaths() {
-  std::string homePath = getenv("HOME");
-  assert(homePath != "");
+  std::string homePath = "/dev/shm/"//getenv("HOME");
   std::string userName = getenv("USER");
   assert(userName != "");
+  homePath = homePath + userName;
   sharedMemPath = SEG_NAME + userName;
   circularBufPath = CB_NAME + userName;
   nodeRolePath = NODE_ROLE + userName;
