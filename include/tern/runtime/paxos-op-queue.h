@@ -83,7 +83,7 @@ void paxq_proxy_give_clocks();
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete);
 void paxq_set_conn_id(unsigned index, uint64_t new_conn_id);
 int paxq_gettid();
-void paxq_tkill(int tid, int sig);
+//void paxq_tkill(int tid, int sig);
 
 
 void paxq_test();

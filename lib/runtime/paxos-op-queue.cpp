@@ -18,6 +18,8 @@
 #include <sys/time.h>
 #include <time.h>
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -64,7 +66,7 @@ void initPaths() {
   std::string homePath = "/dev/shm/";//getenv("HOME");
   std::string userName = getenv("USER");
   assert(userName != "");
-  homePath = homePath + userName;
+  homePath = homePath + userName + "-";
   sharedMemPath = SEG_NAME + userName;
   circularBufPath = CB_NAME + userName;
   nodeRolePath = NODE_ROLE + userName;
@@ -389,12 +391,28 @@ void paxq_set_proxy_pid(int pid) {
   }
 }
 
+// Just a connect and close is enough. Just a "signal".
+// We use socket instead of tkill() because server app may run in lxc.
 void paxq_notify_proxy() {
+  int sockfd;
+  int len;
+  struct sockaddr_un address;
+  int result;
+  const char *sock_path = "/dev/shm/timebubble.sock";
+
+  sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+  assert(sockfd >= 0);
+  address.sun_family = AF_UNIX;
+  strcpy(address.sun_path, sock_path);
+  len = sizeof(address);
+  result = connect(sockfd, (sockaddr*)&address, len);
   DPRINT << "DMT server pid " << getpid() << " asks proxy pid "
-    << proxyPid << " for logical clocks." << std::endl;
-  assert(proxyPid > 0);
-  paxq_tkill(proxyPid, SIGUSR2);
+    << proxyPid << " for logical clocks, connect result (0 is good): "
+    << result << std::endl;
+   assert(proxyPid > 0);
+  close(sockfd);
 }
+ 
 
 // Proxy calls this function, and it must grabs the paxq lock first.
 void paxq_proxy_give_clocks() {
@@ -457,12 +475,6 @@ int paxq_gettid() {
     return my_tid = syscall(SYS_gettid);
   else
     return my_tid;
-}
-
-void paxq_tkill(int tid, int sig) {
-  //std::cout << "paxq_tgkill(" << tgid << ", tid " << tid << ", sig " << sig << "):" <<  std::endl;
-  int ret = syscall(SYS_tkill, tid, sig);  
-  //std::cout << "paxq_tgkill ret " << ret << ", strerror " << strerror(errno) <<  std::endl;
 }
 
 void paxq_test() {
