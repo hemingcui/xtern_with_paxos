@@ -270,9 +270,10 @@ void paxq_create_shared_mem() {
   *nodeRole = ROLE_INVALID;
   
   // Create the IPC lock file.
-  lockFileFd = open(lockFilePath.c_str(), O_CREAT | O_RDWR, 666);
+  lockFileFd = open(lockFilePath.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  chmod(lockFilePath.c_str(), 0666);
   if (lockFileFd == -1) {
-    std::cout << "paxq_create_shared_memory file lock " << lockFilePath << " created failed, errno " << errno << ".\n";
+    std::cout << "paxq_create_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
@@ -291,9 +292,10 @@ void paxq_open_shared_mem(int node_id) {
   assert(*nodeRole == ROLE_INVALID);
 
   // Open the IPC lock file.
-  lockFileFd = open(lockFilePath.c_str(), O_RDWR, 666);
+  lockFileFd = open(lockFilePath.c_str(), O_RDWR, S_IRUSR | S_IWUSR);
+  chmod(lockFilePath.c_str(), 0666);
   if (lockFileFd == -1) {
-    std::cout << "paxq_open_shared_memory file lock " << lockFilePath << " open2 failed, errno " << errno << ".\n";
+    std::cout << "paxq_open_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
