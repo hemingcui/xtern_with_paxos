@@ -250,9 +250,12 @@ void paxq_create_shared_mem() {
   initPaths();
 
   // Create the IPC circular buffer.
+  bip::permissions perm;
+  perm.set_unrestricted();
   std::cout << "Init shared memory " << (bip::shared_memory_object::remove(sharedMemPath.c_str()) ?
     "cleaned up: " : "not exist: " ) << sharedMemPath.c_str() << "\n";
-  segment = new bip::managed_shared_memory(bip::create_only, sharedMemPath.c_str(), (ELEM_CAPACITY+DELTA)*sizeof(paxos_op));
+  segment = new bip::managed_shared_memory(bip::create_only, sharedMemPath.c_str(),
+    (ELEM_CAPACITY+DELTA)*sizeof(paxos_op), 0, perm);
   static const ShmemAllocatorCB alloc_inst (segment->get_segment_manager());
   circbuff = segment->construct<MyCircularBuffer>(circularBufPath.c_str())(ELEM_CAPACITY, alloc_inst);
   circbuff->clear();
@@ -261,7 +264,8 @@ void paxq_create_shared_mem() {
 
   // Create the IPC paxos role (current node is leader or not).
   bip::shared_memory_object::remove(nodeRolePath.c_str());
-  nodeRoleSeg = new bip::managed_shared_memory(bip::create_only, nodeRolePath.c_str(), sizeof(int)*1024);
+  nodeRoleSeg = new bip::managed_shared_memory(bip::create_only, nodeRolePath.c_str(),
+    sizeof(int)*1024, 0, perm);
   nodeRole = nodeRoleSeg->construct<int>(nodeIntPath.c_str())(10);
   *nodeRole = ROLE_INVALID;
   
