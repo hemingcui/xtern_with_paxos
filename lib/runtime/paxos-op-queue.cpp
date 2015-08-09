@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/tcp.h>
+#include <netinet/in.h>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
@@ -55,6 +57,8 @@ IF THE SERVER HAVE MULTIPLE PROCESSES AND EACH OF THEM THEY CONNECT TO
 THE PROXY, THE PAXOS_OP NEEDS TO HAVE A PID FIELD. OR WE NEED TO SEPARATE THE 
 PAXOS OP QUEUE TO A "PER SERVER PROCESS" BASED.**/
 
+const char *timebubble_sockpath = "/dev/shm/timebubble.sock";
+const char *timebubble_tag = "TIME_BUBBLE";
 
 std::string sharedMemPath;
 std::string circularBufPath;
@@ -83,6 +87,7 @@ server_sock_to_conn_id server_sock_map;
 server_port_to_tid server_port_map;
 tid_to_server_port tid_map;
 int binded_socket = -1; /** The socket in the bind() function. **/
+int timebubble_sock = -1;
 
 void conns_init() {
   conn_id_map.clear();
@@ -391,26 +396,46 @@ void paxq_set_proxy_pid(int pid) {
   }
 }
 
+int paxq_build_timebubble_conn() {
+  struct sockaddr_un address;
+  DPRINT << "Server-app side timebubble connection: START!" << std::endl;
+  timebubble_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+  assert(timebubble_sock >= 0);
+  address.sun_family = AF_UNIX;
+  strcpy(address.sun_path, timebubble_sockpath);
+  if (connect(timebubble_sock, (sockaddr*)&address, sizeof(address)) < 0) {
+    DPRINT << "Server-app side timebubble connection: FAIL TO CONNECT!" << std::endl;
+    return -1;
+  }
+  int enable = 1;
+  if(setsockopt(timebubble_sock, IPPROTO_TCP, TCP_NODELAY, (void*)&enable, sizeof(enable)) < 0) {
+    DPRINT << "Server-app side timebubble connection: TCP_NODELAY SETTING ERROR!" << std::endl;
+    return -1;
+  }
+  DPRINT << "DMT server pid " << getpid() << " builds timebubble connection with proxy." << std::endl;
+  return 0;
+}
+
 // Just a connect and close is enough. Just a "signal".
 // We use socket instead of tkill() because server app may run in lxc.
 void paxq_notify_proxy() {
-  int sockfd;
-  int len;
-  struct sockaddr_un address;
-  int result;
-  const char *sock_path = "/dev/shm/timebubble.sock";
-
-  sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-  assert(sockfd >= 0);
-  address.sun_family = AF_UNIX;
-  strcpy(address.sun_path, sock_path);
-  len = sizeof(address);
-  result = connect(sockfd, (sockaddr*)&address, len);
+  int ret;
+  if (timebubble_sock < 0) {
+    ret = paxq_build_timebubble_conn();
+    DPRINT << "DMT server pid init timebubble connection, result " << ret << std::endl;
+    assert(ret == 0);
+  }
+  ret = write(timebubble_sock, timebubble_tag, strlen(timebubble_tag));
+  if (ret == -1) {
+    close(timebubble_sock);
+    timebubble_sock = -1;
+    DPRINT << "DMT-proxy timebubble connection is closed. Reset timebubble_sock for reconnect."
+      << std::endl;
+  }
   DPRINT << "DMT server pid " << getpid() << " asks proxy pid "
-    << proxyPid << " for logical clocks, connect result (0 is good): "
-    << result << std::endl;
+    << proxyPid << " for logical clocks (sock " << timebubble_sock
+    << "), connect result (0 is good): " << ret << std::endl;
    assert(proxyPid > 0);
-  close(sockfd);
 }
  
 
