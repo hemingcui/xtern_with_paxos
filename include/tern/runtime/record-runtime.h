@@ -195,7 +195,7 @@ struct RecorderRT: public Runtime, public _Scheduler {
 
     /// Schedule with paxos queue in the proxy process. 
     if (options::sched_with_paxos)
-      paxq_create_shared_mem();
+      paxq_open_shared_mem();
   }
 
   ~RecorderRT() {

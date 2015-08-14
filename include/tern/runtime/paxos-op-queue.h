@@ -66,7 +66,7 @@ void conns_print();
 
 /// APIs for the proxy-server paxos operation queue.
 void paxq_create_shared_mem();
-void paxq_open_shared_mem(int node_id);
+void paxq_open_shared_mem();
 void paxq_update_role(int is_leader);
 int paxq_role_is_leader();
 void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);

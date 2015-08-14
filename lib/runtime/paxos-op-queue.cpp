@@ -279,7 +279,7 @@ void paxq_create_shared_mem() {
 }
 
 /** This function is called by the proxy, because the eval.py starts the proxy after the server. . **/
-void paxq_open_shared_mem(int node_id) {
+void paxq_open_shared_mem() {
   initPaths();
 
   // Open the IPC circular buffer.
