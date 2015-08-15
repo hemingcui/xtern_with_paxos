@@ -2823,7 +2823,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
   paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
   paxq_lock();
   if (syncType == DMT_REG_SYNC) {
-    while (paxq_size() == 0 || (paxq_get_op2(0, op) && op.value < 0)) {
+    while (paxq_size() == 0 || (paxq_get_op2(0, &op) && op.value < 0)) {
       if (paxq_size() == 0 && paxq_role_is_leader()) { // Invoke a timebubble.
         if (curTimeBubbleCnt == 0)
           curTimeBubbleCnt = options::sched_with_paxos_max; // Init.
@@ -2838,7 +2838,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       paxq_unlock();
       ::usleep(options::sched_with_paxos_usleep);
       paxq_lock();
-      if (paxq_size() > 0 && (paxq_get_op2(0, op) && op.value >= 0)) {
+      if (paxq_size() > 0 && (paxq_get_op2(0, &op) && op.value >= 0)) {
         if (op.type == PAXQ_NOP) {
           if (op.value == 1) {
             paxq_pop_front(5);

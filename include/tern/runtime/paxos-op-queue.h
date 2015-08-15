@@ -72,7 +72,7 @@ int paxq_role_is_leader();
 void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
 paxos_op paxq_get_op(unsigned index);
-bool paxq_get_op2(unsigned index, paxos_op &op);
+int paxq_get_op2(unsigned index, paxos_op *op);
 int paxq_dec_front_value();
 paxos_op paxq_pop_front(int debugTag);
 size_t paxq_size();

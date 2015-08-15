@@ -360,14 +360,14 @@ paxos_op paxq_get_op(unsigned index) {
   return ret;
 }
 
-bool paxq_get_op2(unsigned index, paxos_op &op) {
+int paxq_get_op2(unsigned index, paxos_op *op) {
   assert(index < paxq_size());
   paxos_op ret = (*circbuff)[index];
-  op.connection_id = ret.connection_id;
-  op.counter = ret.counter;
-  op.type = ret.type;
-  op.value = ret.value;
-  return true;
+  op->connection_id = ret.connection_id;
+  op->counter = ret.counter;
+  op->type = ret.type;
+  op->value = ret.value;
+  return 1;
 }
 
 int paxq_dec_front_value() {
