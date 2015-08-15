@@ -327,7 +327,10 @@ void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_
   paxos_op op = {conn_id, counter, t, value}; // TBD: is this OK for IPC shared-memory?
   circbuff->insert(circbuff->begin(), op);   
   DPRINT << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
-    << ">, now size " << paxq_size() << "\n";
+    << ">, now paxq size " << paxq_size() << "\n";
+  if (t == PAXQ_NOP)
+    DPRINT << "paxq_insert_front time <" << tnow.tv_sec << "." << tnow.tv_usec
+    << "> inserted a timebubble with count: " << value << "\n";
   paxq_print();
   if (with_lock) paxq_unlock();
 }
@@ -355,6 +358,16 @@ paxos_op paxq_get_op(unsigned index) {
   assert(index < paxq_size());
   paxos_op ret = (*circbuff)[index];
   return ret;
+}
+
+bool paxq_get_op2(unsigned index, paxos_op &op) {
+  assert(index < paxq_size());
+  paxos_op ret = (*circbuff)[index];
+  op.connection_id = ret.connection_id;
+  op.counter = ret.counter;
+  op.type = ret.type;
+  op.value = ret.value;
+  return true;
 }
 
 int paxq_dec_front_value() {

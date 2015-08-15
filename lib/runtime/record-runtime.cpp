@@ -69,6 +69,7 @@
 
 #include <fstream>
 #include <map>
+#include <algorithm>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -2195,8 +2196,15 @@ ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *b
 
 void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds) {
 
-  if (writefds || exceptfds)
-    fprintf(stderr, "CRANE: server's select() writefds || exceptfds is not NULL.\n");
+  if (writefds) {
+    if (readfds) {
+      fprintf(stderr, "CRANE: server's select() writefds and readfds are not NULL. Disabled. Please contact developers\n");
+      exit(1);
+    } else {
+      fprintf(stderr, "CRANE: server's select() only writefds is not NULL. This select() becomes non-det\n");
+      return NULL;
+    }
+  }
   bool hasBindedSock = false;
   int num_server_sock = 0;
   void *ret = (void *)(long)conns_get_port_from_tid(getpid());
@@ -2271,6 +2279,8 @@ template <typename _S>
 int RecorderRT<_S>::__epoll_create(unsigned ins, int &error, int size)
 {  
   int ret = Runtime::__epoll_create(ins, error, size);
+  fprintf(stderr, "epoll*() support is disabled, please contact developers.\n");
+  exit(1);
   return ret;
 }
 
@@ -2284,8 +2294,27 @@ int RecorderRT<_S>::__epoll_ctl(unsigned ins, int &error, int epfd, int op, int 
 void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
   bool hasBindedSock = false;
   int num_server_sock = 0;
+  bool hasWrite = false;
+  bool hasRead = false;
+  for (int i = 0; i < nfds; ++i) {
+    if ((fds[i].events & POLLOUT) || (fds[i].events & POLLWRNORM) || (fds[i].events & POLLWRBAND)) {
+      hasWrite = true;
+    }
+    if ((fds[i].events & POLLIN) || (fds[i].events & POLLRDNORM) || (fds[i].events & POLLRDBAND)) {
+      hasRead = true;
+    }
+  }
+  if (hasWrite) {
+    if (hasRead) {
+      fprintf(stderr, "CRANE: server's poll() have both write and read events. Disabled. Please contact developers\n");
+      exit(1);
+    } else {
+      fprintf(stderr, "CRANE: server's poll() have only write events. This poll() becomes non-det\n");
+      return NULL;
+    }
+  }
+  
   void *ret = (void *)(long)conns_get_port_from_tid(getpid());
-
   for (int i = 0; i < nfds; ++i) {
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     int server_sock = fds[i].fd;
@@ -2770,6 +2799,122 @@ void popSendOps(uint64_t conn_id, unsigned recv_len) {
     PSELF, recv_len, num_popped, (unsigned long)conn_id, nbytes_recv);
 }
 
+#if 0
+static int curTimeBubbleCnt = 0;
+template <typename _S>
+paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd,
+  void *selectWaitObj, unsigned recvLen) {
+#ifdef DEBUG_SCHED_WITH_PAXOS
+  struct timeval tnow;
+  if (_S::self() >= 2) { 
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "ENTER schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
+  }
+  if (syncType != DMT_REG_SYNC) {
+    assert(sockFd > 0);
+    paxq_lock();
+    conns_print();
+    paxq_print();
+    paxq_unlock();
+  }
+#endif
+
+  paxos_op op = {0, 0, PAXQ_INVALID, 0}; /** head of the paxos operation queue. **/
+  paxq_lock();
+  if (syncType == DMT_REG_SYNC) {
+    while (paxq_size() == 0 || (paxq_get_op2(0, op) && op.value < 0)) {
+      if (paxq_size() == 0 && paxq_role_is_leader()) { // Invoke a timebubble.
+        if (curTimeBubbleCnt == 0)
+          curTimeBubbleCnt = options::sched_with_paxos_max; // Init.
+        if (conns_get_conn_id_num() == 0) // This if check is just a performance hint.
+          curTimeBubbleCnt = std::min(curTimeBubbleCnt+1, options::sched_with_paxos_max);
+        else
+          curTimeBubbleCnt = options::sched_with_paxos_min;
+        paxq_insert_front(0, 0, 0, PAXQ_NOP, -1*curTimeBubbleCnt);
+        paxq_notify_proxy();
+      }
+ 
+      paxq_unlock();
+      ::usleep(options::sched_with_paxos_usleep);
+      paxq_lock();
+      if (paxq_size() > 0 && (paxq_get_op2(0, op) && op.value >= 0)) {
+        if (op.type == PAXQ_NOP) {
+          if (op.value == 1) {
+            paxq_pop_front(5);
+          } else {
+            int clk = paxq_dec_front_value();
+            debugpaxos("Pself %u tid %d, turnCount %u, dec PAXQ_NOP clock: %d\n",
+              PSELF, _S::self(), _S::turnCount, clk);
+          }
+        } else {
+          if (op.type == PAXQ_CONNECT) {
+            _S::signal((void *)(long)conns_get_port_from_tid(getpid()));
+          } else if (op.type == PAXQ_SEND) {
+            _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
+          } else if (op.type == PAXQ_CLOSE) {
+            _S::signal((void *)(long)conns_get_server_sock(op.connection_id));
+            assert(conns_exist_by_conn_id(op.connection_id));
+            conns_erase_by_conn_id(op.connection_id);
+            paxq_pop_front(2);
+          }
+        }
+        break; /** Tot actual socket op, break the loop and proceed. **/
+      }
+    }
+  } else { /** if this is a socket operation **/
+    paxq_unlock();
+    if (syncType == DMT_SELECT) {
+      assert(selectWaitObj); 
+      _S::wait(selectWaitObj);
+    } else if (syncType == DMT_ACCEPT) {
+      unsigned port = conns_get_port_from_tid(getpid()); 
+      _S::wait((void *)(long)port);
+    } else {
+      assert(syncType == DMT_RECV);
+      _S::wait((void *)(long)sockFd);
+    }
+    paxq_lock();
+
+    // When current thread reaches here, the head timebubble must be a socket op (see _S::signal() above).
+    if (paxq_size() > 0) {
+      if (syncType == DMT_SELECT) {
+        goto algo_exit;// NOP.
+      } else {
+        op = paxq_get_op(0);
+        if (syncType == DMT_RECV && op.type == PAXQ_SEND) {
+          // For recv(), to ensure atomicy, we must check the actual bytes received and then unlock.
+          goto algo_exit_without_unlock;
+        } else if (syncType == DMT_ACCEPT && op.type == PAXQ_CONNECT) {
+          paxq_pop_front(4);
+        } else {
+          assert(false && "CRANE: thread is waken up from unknown socket operation.");
+        }
+      } 
+    }
+  } /** end of handling socket operation. **/
+ 
+
+algo_exit:
+  paxq_unlock();
+
+algo_exit_without_unlock:
+
+#ifdef DEBUG_SCHED_WITH_PAXOS
+  if (_S::self() >= 2) {
+    gettimeofday(&tnow, NULL);
+    fprintf(stderr, "LEAVE schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
+      tnow.tv_sec, tnow.tv_usec, PSELF, _S::self(), _S::turnCount, funcName, charSyncType[syncType], sockFd);
+  }
+#endif
+
+  return op;
+}
+#endif
+
+
+
+#if 1
 /* A paxos operation queue from the ab client.
 paxq_print [0]: (1425233714, 0, CONNECT)
 paxq_print [1]: (70144710450, 0, CONNECT)
@@ -2840,7 +2985,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
         if (paxq_role_is_leader()) { // If current node is leader.
           if (paxq_size() == 0) {
             paxq_insert_front(0/*Lock is already held*/, 0, 0, PAXQ_NOP,
-              -1*options::sched_with_paxos_nops*conns_get_conn_id_num());// Negative. Proxy will make it positive.
+              -1*options::sched_with_paxos_min*conns_get_conn_id_num());// Negative. Proxy will make it positive.
             debugpaxos( "Server pself %u tid %d schedSocketOp(%s, %ld) asks proxy for clks, loopCnt %d\n",
               PSELF, _S::self(), charSyncType[syncType], sockFd, loopCnt);
           }
@@ -2927,6 +3072,6 @@ algo_exit_without_unlock:
 
   return op;
 }
-
+#endif
 
 } // namespace tern
