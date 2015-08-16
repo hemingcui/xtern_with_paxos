@@ -56,10 +56,10 @@ Serializer::Serializer():
     assert(logger);
   }
   if (options::light_log_sync) {
-    mkdir(options::output_dir.c_str(), 0777);
+    std::string dir = "/dev/shm/" + options::output_dir;
+    mkdir(dir.c_str(), 0777);
     char buf[1024] = {0};
-    snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", 
-      options::output_dir.c_str(), getpid());
+    snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", dir.c_str(), getpid());
     loggerLight = fopen(buf, "w");
     assert(loggerLight);
   }
