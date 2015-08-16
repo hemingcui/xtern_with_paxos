@@ -228,6 +228,7 @@ struct Serializer: public TidMap {
   ~Serializer();
 
   FILE *logger;
+  FILE *loggerLight;
   unsigned turnCount; // number of turns so far
 };
 

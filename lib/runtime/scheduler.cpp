@@ -40,6 +40,8 @@ Serializer::~Serializer()
 {
   if (options::log_sync)
     fclose(logger);
+  if (options::light_log_sync)
+    fclose(loggerLight);
 }
 
 Serializer::Serializer(): 
@@ -51,6 +53,12 @@ Serializer::Serializer():
     logger = fopen(logPath.c_str(), "w");
     assert(logger);
   }
+  if (options::light_log_sync) {
+    mkdir(options::output_dir.c_str(), 0777);
+    std::string logPath = options::output_dir + "/serializer-light.log";
+    loggerLight = fopen(logPath.c_str(), "w");
+    assert(loggerLight);
+  }
 }
 
 unsigned Serializer::incTurnCount(const char *callerName, unsigned delta) { 
@@ -58,6 +66,10 @@ unsigned Serializer::incTurnCount(const char *callerName, unsigned delta) {
   turnCount = newCnt;
   if (options::log_sync)
     fprintf(logger, "%d %u %s\n", (int) self(), turnCount, callerName);
+  if (options::light_log_sync && self() != IdleThreadTid) {
+    fprintf(loggerLight, "%d %u %s\n", self(), turnCount, callerName);
+    fflush(loggerLight);
+  }
   return turnCount;
 }
 
