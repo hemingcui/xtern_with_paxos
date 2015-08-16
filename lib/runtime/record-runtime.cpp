@@ -2799,7 +2799,7 @@ void popSendOps(uint64_t conn_id, unsigned recv_len) {
     PSELF, recv_len, num_popped, (unsigned long)conn_id, nbytes_recv);
 }
 
-#if 0
+#if 1
 static int curTimeBubbleCnt = 0;
 template <typename _S>
 paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd,
@@ -2836,32 +2836,33 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       }
  
       paxq_unlock();
+      debugpaxos("DMT sleep %d...\n", options::sched_with_paxos_usleep);
       ::usleep(options::sched_with_paxos_usleep);
       paxq_lock();
-      if (paxq_size() > 0 && (paxq_get_op2(0, &op) && op.value >= 0)) {
-        if (op.type == PAXQ_NOP) {
-          if (op.value == 1) {
-            paxq_pop_front(5);
-          } else {
-            int clk = paxq_dec_front_value();
-            debugpaxos("Pself %u tid %d, turnCount %u, dec PAXQ_NOP clock: %d\n",
-              PSELF, _S::self(), _S::turnCount, clk);
-          }
-        } else {
-          if (op.type == PAXQ_CONNECT) {
-            _S::signal((void *)(long)conns_get_port_from_tid(getpid()));
-          } else if (op.type == PAXQ_SEND) {
-            _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
-          } else if (op.type == PAXQ_CLOSE) {
-            _S::signal((void *)(long)conns_get_server_sock(op.connection_id));
-            assert(conns_exist_by_conn_id(op.connection_id));
-            conns_erase_by_conn_id(op.connection_id);
-            paxq_pop_front(2);
-          }
-        }
-        break; /** Tot actual socket op, break the loop and proceed. **/
+    }
+
+    assert (paxq_size() > 0 && (paxq_get_op2(0, &op) && op.value >= 0));
+    if (op.type == PAXQ_NOP) {
+      if (op.value == 1) {
+        paxq_pop_front(5);
+      } else {
+        int clk = paxq_dec_front_value();
+        debugpaxos("Pself %u tid %d, turnCount %u, dec PAXQ_NOP clock: %d\n",
+          PSELF, _S::self(), _S::turnCount, clk);
+      }
+    } else {
+      if (op.type == PAXQ_CONNECT) {
+        _S::signal((void *)(long)conns_get_port_from_tid(getpid()));
+      } else if (op.type == PAXQ_SEND) {
+        _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
+      } else if (op.type == PAXQ_CLOSE) {
+        _S::signal((void *)(long)conns_get_server_sock(op.connection_id));
+        assert(conns_exist_by_conn_id(op.connection_id));
+        conns_erase_by_conn_id(op.connection_id);
+        paxq_pop_front(2);
       }
     }
+
   } else { /** if this is a socket operation **/
     paxq_unlock();
     if (syncType == DMT_SELECT) {
@@ -2914,7 +2915,7 @@ algo_exit_without_unlock:
 
 
 
-#if 1
+#if 0
 /* A paxos operation queue from the ab client.
 paxq_print [0]: (1425233714, 0, CONNECT)
 paxq_print [1]: (70144710450, 0, CONNECT)

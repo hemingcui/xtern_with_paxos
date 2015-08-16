@@ -465,8 +465,13 @@ void paxq_proxy_give_clocks() {
   paxos_op &op = (*circbuff)[0];
   if (op.type == PAXQ_NOP && op.value < 0) {
     op.value = -1*op.value;
-    DPRINT << "Proxy pid " << getpid() << " gives " << op.value
-      << " logical clocks to DMT." << std::endl;
+#if 1
+    struct timeval tnow;
+    gettimeofday(&tnow, NULL);
+    std::cerr << "Proxy pid " << getpid()
+      << ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
+      << " gives " << op.value << " logical clocks to DMT." << std::endl;
+#endif
   } else {
     if (op.type != PAXQ_NOP) {
       std::cout << "Proxy pid " << getpid() << " first op is not PAXQ_NOP." << std::endl;
