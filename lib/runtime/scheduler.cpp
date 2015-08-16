@@ -30,6 +30,8 @@
 #include <cstring>
 #include <algorithm>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include "tern/options.h"
 
 using namespace std;
@@ -55,8 +57,10 @@ Serializer::Serializer():
   }
   if (options::light_log_sync) {
     mkdir(options::output_dir.c_str(), 0777);
-    std::string logPath = options::output_dir + "/serializer-light.log";
-    loggerLight = fopen(logPath.c_str(), "w");
+    char buf[1024] = {0};
+    snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", 
+      options::output_dir.c_str(), getpid());
+    loggerLight = fopen(buf, "w");
     assert(loggerLight);
   }
 }
