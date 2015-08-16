@@ -155,7 +155,7 @@ struct Serializer: public TidMap {
   ///
   /// @return 0 if wait() is signaled or ETIMEOUT if wait() times out
   virtual int wait(void *chan, unsigned timeout=FOREVER) { 
-    incTurnCount();
+    incTurnCount(__PRETTY_FUNCTION__);
     putTurn();
     getTurn();
     return 0; 
@@ -180,7 +180,7 @@ struct Serializer: public TidMap {
   /// schedule.
   virtual int block() { 
     getTurn();
-    int ret = incTurnCount(); 
+    int ret = incTurnCount(__PRETTY_FUNCTION__); 
     putTurn();
     return ret;
   }
@@ -221,7 +221,7 @@ struct Serializer: public TidMap {
   /// lead to a real success of a synchronization operation (e.g., see
   /// pthread_mutex_lock() implementation)
   static const int INF = 0x7fffff00;
-  virtual unsigned incTurnCount(unsigned delta = 0);
+  virtual unsigned incTurnCount(const char *callerName, unsigned delta = 0);
   virtual unsigned getTurnCount(void);
 
   Serializer();

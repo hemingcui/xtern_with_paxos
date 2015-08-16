@@ -53,11 +53,11 @@ Serializer::Serializer():
   }
 }
 
-unsigned Serializer::incTurnCount(unsigned delta) { 
+unsigned Serializer::incTurnCount(const char *callerName, unsigned delta) { 
   unsigned newCnt = turnCount + 1 + delta;
   turnCount = newCnt;
   if (options::log_sync)
-    fprintf(logger, "%d %u\n", (int) self(), turnCount);
+    fprintf(logger, "%d %u %s\n", (int) self(), turnCount, callerName);
   return turnCount;
 }
 

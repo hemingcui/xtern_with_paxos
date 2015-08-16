@@ -56,7 +56,7 @@ struct RecordSerializer: public Serializer {
   }
 
   int  wait(void *chan, unsigned timeout = Scheduler::FOREVER) {
-    incTurnCount();
+    incTurnCount(__PRETTY_FUNCTION__);
     putTurn();
     sched_yield();  //  give control to other threads
     getTurn();
@@ -127,7 +127,7 @@ struct RRScheduler: public Scheduler {
   virtual bool interProEnd();
   virtual void wakeup();
 
-  unsigned incTurnCount(unsigned delta = 0);
+  unsigned incTurnCount(const char *callerName, unsigned delta = 0);
   unsigned getTurnCount(void);
 
   void childForkReturn();

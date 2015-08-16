@@ -310,7 +310,7 @@ int RRScheduler::block()
   assert(tid>=0 && tid < Scheduler::nthread);
   assert(tid == runq.front());
   dprintf("RRScheduler: %d blocks\n", self());
-  int ret = incTurnCount();
+  int ret = incTurnCount(__PRETTY_FUNCTION__);
   next();
   return ret;
 }
@@ -364,7 +364,7 @@ void RRScheduler::putTurn(bool at_thread_end)
 int RRScheduler::wait(void *chan, unsigned nturn)
 {
   record_rdtsc_op("RRScheduler::wait", "START", 2, NULL); // record rdtsc, disabled by default, no performance impact.
-  incTurnCount();
+  incTurnCount(__PRETTY_FUNCTION__);
   int tid = self();
   assert(tid>=0 && tid < Scheduler::nthread);
   assert(tid == runq.front());
@@ -410,9 +410,9 @@ void RRScheduler::signal(void *chan, bool all)
 
 //@before with turn
 //@after with turn
-unsigned RRScheduler::incTurnCount(unsigned delta)
+unsigned RRScheduler::incTurnCount(const char *callerName, unsigned delta)
 {
-  unsigned ret = Serializer::incTurnCount(delta);
+  unsigned ret = Serializer::incTurnCount(callerName, delta);
   if (delta > 0)
     forwardTimeouts(delta);
   fireTimeouts();

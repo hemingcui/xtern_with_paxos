@@ -58,6 +58,9 @@ non_det_clock_bound = 1000
 # if turned on, sync operations will be logged.
 log_sync = 0
 
+# if turned on, sync operations will be logged.
+light_log_sync = 0
+
 # the algorithm to enforce turn, options are:
 # 1.  Value: 1      	semaphore.
 # 2.  Value: 2              busy wait flag + cond wait (default).

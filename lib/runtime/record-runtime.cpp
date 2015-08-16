@@ -273,7 +273,7 @@ void RecorderRT<_S>::progEnd(void) {
 template <typename _S>
 void RecorderRT<_S>::idle_sleep(void) {
   _S::getTurn();
-  int turn = _S::incTurnCount();
+  int turn = _S::incTurnCount(__PRETTY_FUNCTION__);
   assert(turn >= 0);
   timespec ts;
   if (options::log_sync)
@@ -284,7 +284,7 @@ void RecorderRT<_S>::idle_sleep(void) {
 template <typename _S>
 void RecorderRT<_S>::idle_cond_wait(void) {
   _S::getTurn();
-  int turn = _S::incTurnCount();
+  int turn = _S::incTurnCount(__PRETTY_FUNCTION__);
   assert(turn >= 0);
 
   /* Currently idle thread must be in runq since it has grabbed the idle_mutex,
@@ -345,7 +345,7 @@ void RecorderRT<_S>::idle_cond_wait(void) {
 #define SCHED_TIMER_END_COMMON(syncop, ...) \
   int backup_errno = errno; \
   timespec syscall_time = update_time(); \
-  nturn = _S::incTurnCount(); \
+  nturn = _S::incTurnCount(__PRETTY_FUNCTION__); \
   if (options::log_sync) \
     Logger::the->logSync(ins, (syncop), nturn = _S::getTurnCount(), app_time, syscall_time, sched_time, true, __VA_ARGS__);
    
@@ -396,7 +396,7 @@ void RecorderRT<_S>::idle_cond_wait(void) {
   
 
 #define SCHED_TIMER_FAKE_END(syncop, ...) \
-  nturn = _S::incTurnCount(); \
+  nturn = _S::incTurnCount(__PRETTY_FUNCTION__); \
   timespec fake_time = update_time(); \
   if (options::log_sync) \
     Logger::the->logSync(ins, syncop, nturn, app_time, fake_time, sched_time, /* before */ false, __VA_ARGS__); 
@@ -409,7 +409,7 @@ void RecorderRT<_S>::printStat(){
   _S::getTurn();
   if (options::record_runtime_stat)
     stat.print();
-  _S::incTurnCount();
+  _S::incTurnCount(__PRETTY_FUNCTION__);
   _S::putTurn();
 }
   
@@ -1784,7 +1784,7 @@ int RecorderRT<RecordSerializer>::pthreadBarrierWait(unsigned ins, int &error,
 
   _S::putTurn();
   _S::getTurn();  //  more getTurn for consistent number of getTurn with RRSchedler
-  _S::incTurnCount();
+  _S::incTurnCount(__PRETTY_FUNCTION__);
   _S::putTurn();
 
   errno = error;
@@ -1845,7 +1845,7 @@ int RecorderRT<RecordSerializer>::pthreadCondWait(unsigned ins, int &error,
     assert(ret==EBUSY && "failed sync calls are not yet supported!");
     syncWait(mu);
   }
-  nturn = RecordSerializer::incTurnCount();
+  nturn = RecordSerializer::incTurnCount(__PRETTY_FUNCTION__);
   SCHED_TIMER_END(syncfunc::pthread_cond_wait, (uint64_t)cv, (uint64_t)mu);
 
   return 0;
