@@ -18,7 +18,7 @@ scheduler_seed = 0x12345
 log_type = txt      
 
 # default output directory                   
-output_dir = ./out 
+output_dir = ./dmt_out 
 
 # if turned on, dynamic library will obtain eip
 dync_geteip = 0
@@ -78,5 +78,5 @@ record_runtime_stat = 0
 
 # if turned on, record the runtime rdtsc value at begin and end of sync operations.
 record_rdtsc = 0
-rdtsc_output_dir = ./rdtsc_out 
+rdtsc_output_dir = ./dmt_rdtsc_out 
 
