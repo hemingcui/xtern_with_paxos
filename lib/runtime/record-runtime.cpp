@@ -2901,7 +2901,7 @@ algo_exit:
 
 algo_exit_without_unlock:
 
-#ifdef DEBUG_SCHED_WITH_PAXOS
+#ifdef DEBUG_SCHED_WITH_PAXOS 
   if (_S::self() >= 2) {
     gettimeofday(&tnow, NULL);
     fprintf(stderr, "LEAVE schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
