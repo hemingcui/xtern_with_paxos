@@ -81,7 +81,7 @@ void paxq_unlock();
 void paxq_set_proxy_pid(int pid);
 void paxq_notify_proxy(int timebubbleCnt);
 int paxq_build_timebubble_conn();
-void paxq_proxy_give_clocks();
+void paxq_proxy_give_clocks(int timebubble_cnt);
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete);
 void paxq_set_conn_id(unsigned index, uint64_t new_conn_id);
 int paxq_gettid();

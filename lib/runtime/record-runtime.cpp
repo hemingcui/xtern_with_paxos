@@ -2831,8 +2831,10 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
           curTimeBubbleCnt = std::min(curTimeBubbleCnt+1, options::sched_with_paxos_max);
         else
           curTimeBubbleCnt = options::sched_with_paxos_min;
-        paxq_push_back(0, 0, 0, PAXQ_NOP, -1*curTimeBubbleCnt);
-        paxq_notify_proxy(curTimeBubbleCnt);
+        paxq_notify_proxy(curTimeBubbleCnt);/* Just send a timebubble req. The 
+                  timebubble operation will be inserted after each proxy receives the 
+                  consensus. This is for atomicy (the paxq queue order is the 
+                  same as the consensus order). */
       }
  
       paxq_unlock();

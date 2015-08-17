@@ -467,21 +467,22 @@ void paxq_notify_proxy(int timebubbleCnt) {
  
 
 // Proxy calls this function, and it must grabs the paxq lock first.
-void paxq_proxy_give_clocks() {
+void paxq_proxy_give_clocks(int timebubble_cnt) {
   paxq_lock();
-  assert(paxq_size() > 0 &&  && "paxq_proxy_give_clocks: PAXQ must contain a timebubble");
+  paxq_push_back(0, 0, 0, PAXQ_NOP, timebubble_cnt);
+  /*assert(paxq_size() > 0 &&  && "paxq_proxy_give_clocks: PAXQ must contain a timebubble");
   paxos_op &op = (*circbuff)[0];
   assert(op.type == PAXQ_NOP && op.value < 0 &&
     "paxq_proxy_give_clocks: PAXQ head must be a timebubble");
   op.value = -1*op.value;
   paxos_op &op2 = (*circbuff)[0];
-  assert(op2.value > 0);
+  assert(op2.value > 0);*/
 #if 1
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
   fflush(stderr);
   fprintf(stderr, "Proxy pid %d, time <%ld.%ld>, give DMT clks %d.\n",
-    getpid(), tnow.tv_sec, tnow.tv_usec, op2.value);
+    getpid(), tnow.tv_sec, tnow.tv_usec, timebubble_cnt);
   fflush(stderr);
   //std::cerr << std::endl << "Proxy pid " << getpid()
     //<< ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
