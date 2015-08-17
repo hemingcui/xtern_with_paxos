@@ -71,7 +71,7 @@ unsigned Serializer::incTurnCount(const char *callerName, unsigned delta) {
   if (options::log_sync)
     fprintf(logger, "%d %u %s\n", (int) self(), turnCount, callerName);
   if (options::light_log_sync && self() != IdleThreadTid) {
-    fprintf(loggerLight, "%d %u %s      pid %d\n", self(), turnCount, callerName, getpid());
+    fprintf(loggerLight, "%d %u %s\n", self(), turnCount, callerName);
     fflush(loggerLight);
   }
   return turnCount;
