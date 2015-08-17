@@ -461,27 +461,18 @@ void paxq_notify_proxy() {
 // Proxy calls this function, and it must grabs the paxq lock first.
 void paxq_proxy_give_clocks() {
   paxq_lock();
-  assert(paxq_size() > 0);
+  assert(paxq_size() > 0 &&  && "paxq_proxy_give_clocks: PAXQ must contain a timebubble");
   paxos_op &op = (*circbuff)[0];
-  if (op.type == PAXQ_NOP && op.value < 0) {
-    op.value = -1*op.value;
+  assert(op.type == PAXQ_NOP && op.value < 0 &&
+    "paxq_proxy_give_clocks: PAXQ head must be a timebubble");
+  op.value = -1*op.value;
 #if 1
-    struct timeval tnow;
-    gettimeofday(&tnow, NULL);
-    std::cerr << "Proxy pid " << getpid()
-      << ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
-      << " gives " << op.value << " logical clocks to DMT." << std::endl;
+  struct timeval tnow;
+  gettimeofday(&tnow, NULL);
+  std::cerr << "Proxy pid " << getpid()
+    << ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
+    << " gives " << op.value << " logical clocks to DMT." << std::endl;
 #endif
-  } else {
-    if (op.type != PAXQ_NOP) {
-      std::cout << "Proxy pid " << getpid() << " first op is not PAXQ_NOP." << std::endl;
-      paxq_print();
-      assert(false);
-    } else if (op.value > 0) {
-      std::cout << "Proxy pid " << getpid() << " first op is PAXQ_NOP but clock is already positive." << std::endl;
-      paxq_print();
-    }
-  }
   paxq_unlock();
 }
 

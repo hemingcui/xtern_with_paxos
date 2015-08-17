@@ -2824,7 +2824,7 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
   paxq_lock();
   if (syncType == DMT_REG_SYNC) {
     while (paxq_size() == 0 || (paxq_get_op2(0, &op) && op.value < 0)) {
-      if (paxq_size() == 0 && paxq_role_is_leader()) { // Invoke a timebubble.
+      if (paxq_size() == 0) { // Invoke a timebubble.
         if (curTimeBubbleCnt == 0)
           curTimeBubbleCnt = options::sched_with_paxos_max; // Init.
         if (conns_get_conn_id_num() == 0) // This if check is just a performance hint.
@@ -2832,7 +2832,8 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
         else
           curTimeBubbleCnt = options::sched_with_paxos_min;
         paxq_insert_front(0, 0, 0, PAXQ_NOP, -1*curTimeBubbleCnt);
-        paxq_notify_proxy();
+        if (paxq_role_is_leader())
+          paxq_notify_proxy();
       }
  
       paxq_unlock();
