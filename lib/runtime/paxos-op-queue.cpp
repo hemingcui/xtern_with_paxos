@@ -466,12 +466,14 @@ void paxq_proxy_give_clocks() {
   assert(op.type == PAXQ_NOP && op.value < 0 &&
     "paxq_proxy_give_clocks: PAXQ head must be a timebubble");
   op.value = -1*op.value;
+  paxos_op &op2 = (*circbuff)[0];
+  assert(op2.value > 0);
 #if 1
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
   std::cerr << std::endl << "Proxy pid " << getpid()
     << ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
-    << " gives " << op.value << " logical clocks to DMT." << std::endl;
+    << " gives " << op2.value << " logical clocks to DMT." << std::endl;
 #endif
   paxq_unlock();
 }
