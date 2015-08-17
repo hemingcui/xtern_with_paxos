@@ -492,11 +492,6 @@ void paxq_proxy_give_clocks(int timebubble_cnt) {
 }
 
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
-#ifdef DEBUG_PAXOS_OP_QUEUE
-  struct timeval tnow;
-  gettimeofday(&tnow, NULL);
-#endif
-
   unsigned actual_delete = 0;
   while (actual_delete < num_delete) {
     assert(paxq_size() > 0);
@@ -505,12 +500,12 @@ void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
     for (; itr != circbuff->end(); itr++, i++) {
       paxos_op op = (*circbuff)[i];
       if (op.connection_id == conn_id) {
-
-#ifdef 1
+#if 1
+        struct timeval tnow;
+        gettimeofday(&tnow, NULL);
         fprintf(stderr, "DEBUG TAG 1: paxq_pop_front time <%ld.%ld>: (%ld, %lu, %s, %d)\n",
           tnow.tv_sec, tnow.tv_usec, (long)op.connection_id, (unsigned long)op.counter, paxq_op_str[op.type], op.value);
 #endif
-
         circbuff->erase(itr);
         actual_delete++;
         break;
