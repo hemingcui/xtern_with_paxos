@@ -337,12 +337,12 @@ void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_
 }
 */
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value) {
-#ifdef DEBUG_PAXOS_OP_QUEUE
+//#ifdef DEBUG_PAXOS_OP_QUEUE
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
   std::cout << "paxq_push_back time <" << tnow.tv_sec << "." << tnow.tv_usec
     << "> , op (" << (unsigned long)conn_id << ", " << counter << ", " << paxq_op_str[t] << ", " << value << ")." << std::endl;
-#endif
+//#endif
 
   if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
