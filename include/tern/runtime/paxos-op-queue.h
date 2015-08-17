@@ -69,7 +69,7 @@ void paxq_create_shared_mem();
 void paxq_open_shared_mem();
 void paxq_update_role(int is_leader);
 int paxq_role_is_leader();
-void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
+//void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value);
 paxos_op paxq_get_op(unsigned index);
 int paxq_get_op2(unsigned index, paxos_op *op);
@@ -79,7 +79,7 @@ size_t paxq_size();
 void paxq_lock();
 void paxq_unlock();
 void paxq_set_proxy_pid(int pid);
-void paxq_notify_proxy();
+void paxq_notify_proxy(int timebubbleCnt);
 int paxq_build_timebubble_conn();
 void paxq_proxy_give_clocks();
 void paxq_delete_ops(uint64_t conn_id, unsigned num_delete);
@@ -93,6 +93,7 @@ void paxq_print();
 
 extern const char *timebubble_sockpath;
 extern const char *timebubble_tag;
+extern const int timebubble_clk_len;
 
 #ifdef __cplusplus
 }

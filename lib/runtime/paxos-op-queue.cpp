@@ -59,6 +59,7 @@ PAXOS OP QUEUE TO A "PER SERVER PROCESS" BASED.**/
 
 const char *timebubble_sockpath = "/dev/shm/timebubble.sock";
 const char *timebubble_tag = "TIME_BUBBLE";
+const int timebubble_clk_len = 8;
 
 std::string sharedMemPath;
 std::string circularBufPath;
@@ -314,7 +315,7 @@ int paxq_role_is_leader() {
   DPRINT << "Current node is leader: " << ret << std::endl;
   return ret;
 }
-
+/*
 void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value) {
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
@@ -334,7 +335,7 @@ void paxq_insert_front(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_
   paxq_print();
   if (with_lock) paxq_unlock();
 }
-
+*/
 void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_TYPE t, int value) {
 #ifdef DEBUG_PAXOS_OP_QUEUE
   struct timeval tnow;
@@ -437,14 +438,21 @@ int paxq_build_timebubble_conn() {
 
 // Just a connect and close is enough. Just a "signal".
 // We use socket instead of tkill() because server app may run in lxc.
-void paxq_notify_proxy() {
+void paxq_notify_proxy(int timebubbleCnt) {
   int ret;
+  const int buf_len = strlen(timebubble_tag) + timebubble_clk_len;
+  char buf[buf_len+1];
+  memset(buf, 0, buf_len+1);
+  assert(timebubble_clk_len == 8);
+  snprintf(buf, buf_len+1, "%08d%s", timebubbleCnt, timebubble_tag);
   if (timebubble_sock < 0) {
     ret = paxq_build_timebubble_conn();
     DPRINT << "DMT server pid init timebubble connection, result " << ret << std::endl;
     assert(ret == 0);
   }
-  ret = write(timebubble_sock, timebubble_tag, strlen(timebubble_tag));
+  std::cerr << "paxq_notify_proxy sends timebubble req (" << buf << ") (" << 
+  timebubbleCnt << ")." << std::endl;
+  ret = write(timebubble_sock, buf, buf_len+1);
   if (ret == -1) {
     close(timebubble_sock);
     timebubble_sock = -1;
