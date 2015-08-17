@@ -253,7 +253,7 @@ void paxq_create_shared_mem() {
   // Create the IPC circular buffer.
   bip::permissions perm;
   perm.set_unrestricted();
-  std::cout << "Init shared memory " << (bip::shared_memory_object::remove(sharedMemPath.c_str()) ?
+  std::cerr << "Init shared memory " << (bip::shared_memory_object::remove(sharedMemPath.c_str()) ?
     "cleaned up: " : "not exist: " ) << sharedMemPath.c_str() << "\n";
   segment = new bip::managed_shared_memory(bip::create_only, sharedMemPath.c_str(),
     (ELEM_CAPACITY+DELTA)*sizeof(paxos_op), 0, perm);
@@ -274,7 +274,7 @@ void paxq_create_shared_mem() {
   lockFileFd = open(lockFilePath.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
   chmod(lockFilePath.c_str(), 0666);
   if (lockFileFd == -1) {
-    std::cout << "paxq_create_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
+    std::cerr << "paxq_create_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
@@ -296,7 +296,7 @@ void paxq_open_shared_mem() {
   lockFileFd = open(lockFilePath.c_str(), O_RDWR, S_IRUSR | S_IWUSR);
   chmod(lockFilePath.c_str(), 0666);
   if (lockFileFd == -1) {
-    std::cout << "paxq_open_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
+    std::cerr << "paxq_open_shared_memory file lock " << lockFilePath << " open failed, errno " << errno << ".\n";
     exit(1);
   }
 }
@@ -346,7 +346,7 @@ void paxq_push_back(int with_lock, uint64_t conn_id, uint64_t counter, PAXOS_OP_
 
   if (with_lock) paxq_lock();
   if (paxq_size() == ELEM_CAPACITY) {
-    std::cout << sharedMemPath << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
+    std::cerr << sharedMemPath << " is too small for this app. Please enlarge it in paxos-op-queue.h\n"; 
     if (with_lock) paxq_unlock();
     exit(1);
   }
@@ -538,23 +538,23 @@ void paxq_test() {
 #endif
 
 
-  std::cout << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
+  std::cerr << "Circular Buffer Size before push_back: " << circbuff->size() << "\n";
   for (int i = 0; i < ELEM_CAPACITY*2+123; i++) {
     paxos_op op = {i, i, PAXQ_SEND};
     circbuff->push_back(op);
     //push_back(i, i, SEND); This code will trigger the circular buffer 
     // full exit, which is good.
   }
-  std::cout << "Circular Buffer Size after push_back: " << circbuff->size() << "\n";
+  std::cerr << "Circular Buffer Size after push_back: " << circbuff->size() << "\n";
 
   for (int i = 0; i < 10; i++) {
-    std::cout << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
+    std::cerr << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
       << ", " << (unsigned long)(*circbuff)[i].counter << ", " << (*circbuff)[i].type << "\n";
   }
 
-  std::cout << "\n\nCircular Buffer Size after pop: " << circbuff->size() << "\n";
+  std::cerr << "\n\nCircular Buffer Size after pop: " << circbuff->size() << "\n";
   for (int i = 0; i < 10; i++) {
-    std::cout << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
+    std::cerr << "Child got: " << (unsigned long)(*circbuff)[i].connection_id
       << ", " << (unsigned long)(*circbuff)[i].counter << "\n";
   }  
 }
@@ -567,14 +567,14 @@ void paxq_print() {
   if (paxq_size() == 0)
     return;
   //boost::circular_buffer::iterator itr = circbuff->begin();
-  //std::cout << "paxq_print circbuff now " << circbuff << ", pself " << pthread_self() << std::endl;
+  //std::cerr << "paxq_print circbuff now " << circbuff << ", pself " << pthread_self() << std::endl;
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
-  std::cout << "paxq_print size now time (" << tnow.tv_sec << "." << tnow.tv_usec << "), size "
+  std::cerr << "paxq_print size now time (" << tnow.tv_sec << "." << tnow.tv_usec << "), size "
     << paxq_size() << std::endl;
   for (size_t i = 0; i < paxq_size(); i++) {
     paxos_op &op = (*circbuff)[i];
-    std::cout << "paxq_print [" << i << "]: (" << (unsigned long)op.connection_id
+    std::cerr << "paxq_print [" << i << "]: (" << (unsigned long)op.connection_id
     << ", " << (unsigned long)op.counter << ", " << paxq_op_str[op.type] << ", " << op.value << ")\n";
   }
 }
