@@ -38,7 +38,7 @@
 #define NODE_ROLE "/NODE_ROLE-"
 #define NODE_INT "/NODE_INT-"
 #define LOCK_FILE_NAME "paxos_queue_file_lock"
-#define DEBUG_PAXOS_OP_QUEUE
+//#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
 extern "C" {
@@ -388,7 +388,7 @@ paxos_op paxq_pop_front(int debugTag) {
   if (op.type == PAXQ_CONNECT)
     paxq_set_proxy_pid(op.counter);
   circbuff->pop_front();
-  DPRINT << "DEBUG TAG " << debugTag
+  std::cerr << "DEBUG TAG " << debugTag
     << ": paxq_pop_front time <" << tnow.tv_sec << "." << tnow.tv_usec 
     << ">: (" << (unsigned long)op.connection_id
     << ", " << (unsigned long)op.counter << ", " << paxq_op_str[op.type]
@@ -506,7 +506,7 @@ void paxq_delete_ops(uint64_t conn_id, unsigned num_delete) {
       paxos_op op = (*circbuff)[i];
       if (op.connection_id == conn_id) {
 
-#ifdef DEBUG_PAXOS_OP_QUEUE
+#ifdef 1
         fprintf(stderr, "DEBUG TAG 1: paxq_pop_front time <%ld.%ld>: (%ld, %lu, %s, %d)\n",
           tnow.tv_sec, tnow.tv_usec, (long)op.connection_id, (unsigned long)op.counter, paxq_op_str[op.type], op.value);
 #endif

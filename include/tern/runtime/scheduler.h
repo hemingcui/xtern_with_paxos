@@ -267,6 +267,7 @@ struct Scheduler: public Serializer {
   }
 
   void childForkReturn() {
+    Serializer::childForkReturn();
     TidMap::reset(pthread_self());
     waitq.clear();
     runq.deep_clear();    
