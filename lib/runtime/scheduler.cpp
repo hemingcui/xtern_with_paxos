@@ -83,6 +83,7 @@ unsigned Serializer::getTurnCount(void) {
 
 void Serializer::reopenLogs() {
   // Recreate the child process's light log file, do not mess up with parerent's.
+  // Do not care about the log_sync, because the log file serializer.log is the same anyway.
   if (options::light_log_sync) {
     fclose(loggerLight);
     std::string dir = "/dev/shm/" + options::output_dir;
@@ -91,13 +92,6 @@ void Serializer::reopenLogs() {
     snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", dir.c_str(), getpid());
     loggerLight = fopen(buf, "w");
     assert(loggerLight);
-  }
-  if (options::log_sync) {
-    fclose(logger);
-    mkdir(options::output_dir.c_str(), 0777);
-    std::string logPath = options::output_dir + "/serializer.log";
-    logger = fopen(logPath.c_str(), "w");
-    assert(logger);
   }
 }
 
