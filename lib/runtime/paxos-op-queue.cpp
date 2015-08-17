@@ -38,7 +38,7 @@
 #define NODE_ROLE "/NODE_ROLE-"
 #define NODE_INT "/NODE_INT-"
 #define LOCK_FILE_NAME "paxos_queue_file_lock"
-//#define DEBUG_PAXOS_OP_QUEUE
+#define DEBUG_PAXOS_OP_QUEUE
 
 #ifdef __cplusplus
 extern "C" {
