@@ -471,9 +471,13 @@ void paxq_proxy_give_clocks() {
 #if 1
   struct timeval tnow;
   gettimeofday(&tnow, NULL);
-  std::cerr << std::endl << "Proxy pid " << getpid()
-    << ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
-    << " gives " << op2.value << " logical clocks to DMT." << std::endl;
+  fflush(stderr);
+  fprintf(stderr, "Proxy pid %d, time <%ld.%ld>, give DMT clks %d.\n",
+    getpid(), tnow.tv_sec, tnow.tv_usec, op2.value);
+  fflush(stderr);
+  //std::cerr << std::endl << "Proxy pid " << getpid()
+    //<< ", now time (" << tnow.tv_sec << "." << tnow.tv_usec << "),"
+    //<< " gives " << op2.value << " logical clocks to DMT." << std::endl;
 #endif
   paxq_unlock();
 }
