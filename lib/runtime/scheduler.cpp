@@ -80,3 +80,24 @@ unsigned Serializer::incTurnCount(const char *callerName, unsigned delta) {
 unsigned Serializer::getTurnCount(void) { 
   return turnCount - 1; 
 }
+
+void Serializer::reopenLogs() {
+  // Recreate the child process's light log file, do not mess up with parerent's.
+  if (options::light_log_sync) {
+    fclose(loggerLight);
+    std::string dir = "/dev/shm/" + options::output_dir;
+    mkdir(dir.c_str(), 0777);
+    char buf[1024] = {0};
+    snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", dir.c_str(), getpid());
+    loggerLight = fopen(buf, "w");
+    assert(loggerLight);
+  }
+  if (options::log_sync) {
+    fclose(logger);
+    mkdir(options::output_dir.c_str(), 0777);
+    std::string logPath = options::output_dir + "/serializer.log";
+    logger = fopen(logPath.c_str(), "w");
+    assert(logger);
+  }
+}
+
