@@ -155,7 +155,7 @@ struct Serializer: public TidMap {
   ///
   /// @return 0 if wait() is signaled or ETIMEOUT if wait() times out
   virtual int wait(void *chan, unsigned timeout=FOREVER) { 
-    incTurnCount(__FUNCTION__);
+    incTurnCount(__PRETTY_FUNCTION__);
     putTurn();
     getTurn();
     return 0; 
@@ -180,7 +180,7 @@ struct Serializer: public TidMap {
   /// schedule.
   virtual int block() { 
     getTurn();
-    int ret = incTurnCount(__FUNCTION__); 
+    int ret = incTurnCount(__PRETTY_FUNCTION__); 
     putTurn();
     return ret;
   }
