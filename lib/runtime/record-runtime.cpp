@@ -2349,17 +2349,17 @@ int RecorderRT<_S>::__poll(unsigned ins, int &error, struct pollfd *fds, nfds_t 
     paxq_unlock();
   }
 
+  int ret;
   SOCKET_TIMER_DECL;
   if (options::sched_with_paxos == 0 || waitObj == NULL) {
     BLOCK_TIMER_START(poll, ins, error, fds, nfds, timeout);
+    ret = Runtime::__poll(ins, error, fds, nfds, timeout);
+    BLOCK_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
   } else {
     SOCKET_TIMER_START;
     schedSocketOp(__FUNCTION__, DMT_SELECT, -1, waitObj);
-  }
-  int ret = Runtime::__poll(ins, error, fds, nfds, timeout);
-  if (options::sched_with_paxos == 0 || waitObj == NULL) {
-    BLOCK_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
-  } else {
+    /* Because all incoming sockets are controled by us, make the timeout -1 to avoid nondeterminism.*/
+    ret = Runtime::__poll(ins, error, fds, nfds, -1);
     SOCKET_TIMER_END(syncfunc::poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout, (uint64_t)ret);
   }
   return ret;
