@@ -2224,6 +2224,8 @@ void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *e
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
+  fprintf(stderr, "Pself %u get_select_wait_obj get_poll_wait_obj %d, num server sock %d\n",
+    (unsigned)pthread_self(), hasBindedSock, num_server_sock);
   if (hasBindedSock == 0 && num_server_sock == 0)
     return NULL;
   else
@@ -2239,18 +2241,18 @@ int RecorderRT<_S>::__select(unsigned ins, int &error, int nfds, fd_set *readfds
     waitObj = get_select_wait_obj(nfds, readfds, writefds, exceptfds);
     paxq_unlock();
   }
-  
+
+  int ret;
   SOCKET_TIMER_DECL;
   if (options::sched_with_paxos == 0 || waitObj == NULL) {
     BLOCK_TIMER_START(select, ins, error, nfds, readfds, writefds, exceptfds, timeout);
+    ret = Runtime::__select(ins, error, nfds, readfds, writefds, exceptfds, timeout);
+    BLOCK_TIMER_END(syncfunc::select, (uint64_t) ret);
   } else {
     SOCKET_TIMER_START;
     schedSocketOp(__FUNCTION__, DMT_SELECT, -1, waitObj);
-  }
-  int ret = Runtime::__select(ins, error, nfds, readfds, writefds, exceptfds, timeout);
-  if (options::sched_with_paxos == 0 || waitObj == NULL) {
-    BLOCK_TIMER_END(syncfunc::select, (uint64_t) ret);
-  } else {
+    /* Because all incoming sockets are controled by us, make the timeout NULL to avoid nondeterminism.*/
+    ret = Runtime::__select(ins, error, nfds, readfds, writefds, exceptfds, NULL);
     SOCKET_TIMER_END(syncfunc::select, (uint64_t) ret);
   }
   return ret;
