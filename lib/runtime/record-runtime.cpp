@@ -2373,7 +2373,7 @@ int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct so
     SOCKET_TIMER_START;
     struct sockaddr_in *si = (sockaddr_in*)address;
     unsigned port = (unsigned)ntohs(si->sin_port);
-    debugpaxos( "Server thread pself %u pid/tid %d binds port %u\n",
+    fprintf(stderr, "Server thread pself %u pid/tid %d binds port %u\n",
       (unsigned)pthread_self(), getpid(), port);
     conns_add_tid_port_pair(getpid(), port, socket);//Currenty use piid instead of _S::self().
   }
