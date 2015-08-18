@@ -122,7 +122,7 @@ struct RRScheduler: public Scheduler {
   virtual int  wait(void *chan, unsigned timeout = Scheduler::FOREVER);
   virtual void signal(void *chan, bool all=false);
 
-  virtual int block(); 
+  virtual int block(const char *callerName); 
   virtual bool interProStart();
   virtual bool interProEnd();
   virtual void wakeup();

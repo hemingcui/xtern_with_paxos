@@ -305,7 +305,7 @@ void RecorderRT<_S>::idle_cond_wait(void) {
     return Runtime::__##sync_op(__VA_ARGS__); \
   } \
   if (_S::interProStart()) { \
-    _S::block(); \
+    _S::block(__PRETTY_FUNCTION__); \
   }
   //fprintf(stderr, "\n\nBLOCK_TIMER_START ins, pid %d, self %u, tid %d, turnCount %u, function %s\n", getpid(), (unsigned)pthread_self(), _S::self(), _S::turnCount, __FUNCTION__);
 // At this moment, since self-thread is ahead of the run queue, so this block() should be very fast.
@@ -1604,7 +1604,7 @@ void RecorderRT<_S>::nonDetStart() {
   SCHED_TIMER_END(syncfunc::tern_non_det_start, 0);
   /** Reuse existing xtern API. Get turn, remove myself from runq, and then pass turn. This 
   operation is determinisitc since we get turn. **/
-  _S::block();
+  _S::block(__PRETTY_FUNCTION__);
   dprintf("nonDetStart is done, tid %d, self %u, turnCount %u\n", _S::self(), (unsigned)pthread_self(), _S::turnCount);
   assert(!inNonDet);
   inNonDet = true;
@@ -1649,7 +1649,7 @@ void RecorderRT<_S>::threadDetach() {
   //BLOCK_TIMER_START(pthread_detach, 0, 0, pthread_self());
   // Below code is just the same as BLOCK_TIMER_START, write in this form to pass compiler.
   if (_S::interProStart()) {
-    _S::block();
+    _S::block(__PRETTY_FUNCTION__);
   }
   fprintf(stderr, "CRANE: pid %d tid %d pself %u is detached by %s() hint.\n", getpid(), _S::self(), PSELF, __FUNCTION__);
 }

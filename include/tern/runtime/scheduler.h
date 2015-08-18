@@ -178,7 +178,7 @@ struct Serializer: public TidMap {
   ///
   /// NOTICE: different delay before @block() should not lead to different
   /// schedule.
-  virtual int block() { 
+  virtual int block(const char *callerName) { 
     getTurn();
     int ret = incTurnCount(__PRETTY_FUNCTION__); 
     putTurn();

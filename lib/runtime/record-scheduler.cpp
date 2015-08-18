@@ -301,7 +301,7 @@ void RRScheduler::getTurn()
   SELFCHECK;
 }
 
-int RRScheduler::block()
+int RRScheduler::block(const char *callerName)
 {
   getTurn();
   int tid = self();
@@ -310,7 +310,10 @@ int RRScheduler::block()
   assert(tid>=0 && tid < Scheduler::nthread);
   assert(tid == runq.front());
   dprintf("RRScheduler: %d blocks\n", self());
-  int ret = incTurnCount(__PRETTY_FUNCTION__);
+  std::string funcName = callerName;
+  funcName += "  ||||  ";
+  funcName += __PRETTY_FUNCTION__;
+  int ret = incTurnCount(funcName.c_str());
   next();
   return ret;
 }
