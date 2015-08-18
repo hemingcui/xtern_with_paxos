@@ -2332,7 +2332,8 @@ void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
-  fprintf(stderr, "get_poll_wait_obj get_poll_wait_obj %d, num server sock %d\n", hasBindedSock, num_server_sock);
+  fprintf(stderr, "Pself %u get_poll_wait_obj get_poll_wait_obj %d, num server sock %d\n",
+    (unsigned)pthread_self(), hasBindedSock, num_server_sock);
   if (hasBindedSock == 0 && num_server_sock == 0)
     return NULL;
   else
