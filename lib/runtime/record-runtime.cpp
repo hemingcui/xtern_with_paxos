@@ -2224,9 +2224,9 @@ void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *e
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
-  fprintf(stderr, "Pself %u get_select_wait_obj get_poll_wait_obj %d, num server sock %d\n",
-    (unsigned)pthread_self(), hasBindedSock, num_server_sock);
-  if (hasBindedSock == 0 && num_server_sock == 0)
+  fprintf(stderr, "Pself %u %s hasBindedSock %d, num_server_sock %d\n",
+    (unsigned)pthread_self(), __FUNCTION__, hasBindedSock, num_server_sock);
+  if (hasBindedSock == false && num_server_sock == 0)
     return NULL;
   else
     return ret;
@@ -2258,20 +2258,76 @@ int RecorderRT<_S>::__select(unsigned ins, int &error, int nfds, fd_set *readfds
   return ret;
 }
 
+void* get_epoll_wait_obj(int epfd, struct epoll_event *events, int maxevents) {
+  bool hasBindedSock = false;
+  int num_server_sock = 0;
+  bool hasWrite = false;
+  bool hasRead = false;
+  for (int i = 0; i < maxevents; ++i) {
+    if ((events[i].events & EPOLLOUT)) {
+      hasWrite = true;
+    }
+    if ((events[i].events & EPOLLIN)) {
+      hasRead = true;
+    }
+  }
+  if (hasWrite) {
+    if (hasRead) {
+      fprintf(stderr, "CRANE: server's epoll_wait() have both write and read events. Disabled. Please contact developers\n");
+      exit(1);
+    } else {
+      fprintf(stderr, "CRANE: server's epoll_wait() have only write events. This epoll_wait() becomes non-det\n");
+      return NULL;
+    }
+  }
+  
+  void *ret = (void *)(long)conns_get_port_from_tid(getpid());
+  for (int i = 0; i < maxevents; ++i) {
+    // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
+    int server_sock = events[i].data.fd;
+    if (conns_is_binded_socket(server_sock))
+      hasBindedSock = true;
+    if (conns_exist_by_server_sock(server_sock)) {
+      debugpaxos( "Server's epoll_wait() finds established socket pair <%lu, %d>.\n",
+        conns_get_conn_id(server_sock), server_sock);
+      num_server_sock++;
+      ret = (void *)(long)server_sock;
+    }
+  }
+  if (num_server_sock > 1) {
+    fprintf(stderr, "CRANE: server's epoll_wait() num_server_sock > 1. Use the universal port as wait obj\n");
+    assert(false);
+    ret = (void *)(long)conns_get_port_from_tid(getpid());
+  }
+  fprintf(stderr, "Pself %u %s hasBindedSock %d, num_server_sock %d\n",
+    (unsigned)pthread_self(), __FUNCTION__, hasBindedSock, num_server_sock);
+  if (hasBindedSock == false && num_server_sock == 0)
+    return NULL;
+  else
+    return ret;
+}
+
 template <typename _S>
 int RecorderRT<_S>::__epoll_wait(unsigned ins, int &error, int epfd, struct epoll_event *events, int maxevents, int timeout)
 {  
+  void *waitObj = NULL;
+  if (options::sched_with_paxos == 1) {
+    paxq_lock();
+    waitObj = get_epoll_wait_obj(epfd, events, maxevents);
+    paxq_unlock();
+  }
+
+  int ret;
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || waitObj == NULL) {
     BLOCK_TIMER_START(epoll_wait, ins, error, epfd, events, maxevents, timeout);
+    ret = Runtime::__epoll_wait(ins, error, epfd, events, maxevents, timeout);
+    BLOCK_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
   } else {
     SOCKET_TIMER_START;
     schedSocketOp(__FUNCTION__, DMT_SELECT, -1);
-  }
-  int ret = Runtime::__epoll_wait(ins, error, epfd, events, maxevents, timeout);
-  if (options::sched_with_paxos == 0) {
-    BLOCK_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
-  } else {
+    /* Because all incoming sockets are controled by us, make the timeout -1 to avoid nondeterminism.*/
+    ret = Runtime::__epoll_wait(ins, error, epfd, events, maxevents, -1);
     SOCKET_TIMER_END(syncfunc::epoll_wait, (uint64_t) ret);
   }
   return ret;
@@ -2280,16 +2336,28 @@ int RecorderRT<_S>::__epoll_wait(unsigned ins, int &error, int epfd, struct epol
 template <typename _S>
 int RecorderRT<_S>::__epoll_create(unsigned ins, int &error, int size)
 {  
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_START;
+  }
   int ret = Runtime::__epoll_create(ins, error, size);
-  fprintf(stderr, "epoll*() support is disabled, please contact developers.\n");
-  exit(1);
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_END(syncfunc::epoll_create, (uint64_t) ret);
+  }
   return ret;
 }
 
 template <typename _S>
 int RecorderRT<_S>::__epoll_ctl(unsigned ins, int &error, int epfd, int op, int fd, struct epoll_event *event)
 {  
+  SOCKET_TIMER_DECL;
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_START;
+  }
   int ret = Runtime::__epoll_ctl(ins, error, epfd, op, fd, event);
+  if (options::sched_with_paxos == 1) {
+    SOCKET_TIMER_END(syncfunc::epoll_ctl, (uint64_t) ret);
+  }
   return ret;
 }
 
@@ -2334,9 +2402,9 @@ void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
     assert(false);
     ret = (void *)(long)conns_get_port_from_tid(getpid());
   }
-  fprintf(stderr, "Pself %u get_poll_wait_obj get_poll_wait_obj %d, num server sock %d\n",
-    (unsigned)pthread_self(), hasBindedSock, num_server_sock);
-  if (hasBindedSock == 0 && num_server_sock == 0)
+  fprintf(stderr, "Pself %u %s hasBindedSock %d, num_server_sock %d\n",
+    (unsigned)pthread_self(), __FUNCTION__, hasBindedSock, num_server_sock);
+  if (hasBindedSock == false && num_server_sock == 0)
     return NULL;
   else
     return ret;
@@ -2376,9 +2444,9 @@ int RecorderRT<_S>::__bind(unsigned ins, int &error, int socket, const struct so
     SOCKET_TIMER_START;
     struct sockaddr_in *si = (sockaddr_in*)address;
     unsigned port = (unsigned)ntohs(si->sin_port);
-    fprintf(stderr, "Server thread pself %u pid/tid %d binds port %u\n",
-      (unsigned)pthread_self(), getpid(), port);
-    conns_add_tid_port_pair(getpid(), port, socket);//Currenty use piid instead of _S::self().
+    fprintf(stderr, "Server thread pself %u pid/tid %d binds port %u, socket %d\n",
+      (unsigned)pthread_self(), getpid(), port, socket);
+    conns_add_tid_port_pair(getpid(), port, socket);//Currenty use pid instead of _S::self().
   }
   int ret = Runtime::__bind(ins, error, socket, address, address_len);
   if (options::sched_with_paxos == 1) {
