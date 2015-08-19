@@ -151,7 +151,7 @@ void conns_add_pair(uint64_t conn_id, int server_sock) {
   conn_id_map[conn_id] = server_sock;
   assert(server_sock_map.find(server_sock) == server_sock_map.end());
   server_sock_map[server_sock] = conn_id;
-  DPRINT << "conns_add_pair added pair: (connection_id "
+  std::cerr << "conns_add_pair added pair: (connection_id "
     << (unsigned long)conn_id << ", server_sock " << server_sock 
     << "), now conns size " << conns_get_conn_id_num() << std::endl;
 }

@@ -2388,6 +2388,8 @@ void* get_poll_wait_obj(struct pollfd *fds, nfds_t nfds) {
   for (int i = 0; i < nfds; ++i) {
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     int server_sock = fds[i].fd;
+    fprintf(stderr, "Pself %u %s checking poll fds[%d].fd %d\n",
+      (unsigned)pthread_self(), __FUNCTION__, i, server_sock);
     if (conns_is_binded_socket(server_sock))
       hasBindedSock = true;
     if (conns_exist_by_server_sock(server_sock)) {
