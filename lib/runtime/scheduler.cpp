@@ -42,8 +42,10 @@ Serializer::~Serializer()
 {
   if (options::log_sync)
     fclose(logger);
-  if (options::light_log_sync)
+  if (options::light_log_sync) {
     fclose(loggerLight);
+    fclose(loggerOutput);
+  }
 }
 
 Serializer::Serializer(): 
@@ -62,6 +64,11 @@ Serializer::Serializer():
     snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", dir.c_str(), getpid());
     loggerLight = fopen(buf, "w");
     assert(loggerLight);
+
+    char outBuf[1024] = {0};
+    snprintf(outBuf, 1024, "%s/network-output-pid-%d.log", dir.c_str(), getpid());
+    loggerOutput = fopen(outBuf, "w");
+    assert(loggerOutput);
   }
 }
 
@@ -92,6 +99,25 @@ void Serializer::reopenLogs() {
     snprintf(buf, 1024, "%s/serializer-light-pid-%d.log", dir.c_str(), getpid());
     loggerLight = fopen(buf, "w");
     assert(loggerLight);
+
+    fclose(loggerOutput);
+    char outBuf[1024] = {0};
+    snprintf(outBuf, 1024, "%s/network-output-pid-%d.log", dir.c_str(), getpid());
+    loggerOutput = fopen(outBuf, "w");
+    assert(loggerOutput);
   }
+}
+
+void Serializer::logNetworkOutput(int tid, const char *callerName, const void *buf, unsigned len) {
+  assert(options::light_log_sync == 1);
+  fprintf(loggerOutput, "========  Tid %d, Function %s  ========\n", tid, callerName);
+  void *res = malloc(len+1);
+  assert(res);
+  memset(res, 0, len+1);
+  memcpy(res, buf, len);
+  fprintf(loggerOutput, "%s", (const char *)res);
+  fprintf(loggerOutput, "\n\n");
+  fflush(loggerOutput);
+  free(res);
 }
 

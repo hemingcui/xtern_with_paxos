@@ -225,11 +225,14 @@ struct Serializer: public TidMap {
   virtual unsigned incTurnCount(const char *callerName, unsigned delta = 0);
   virtual unsigned getTurnCount(void);
 
+  void logNetworkOutput(int tid, const char *callerName, const void *buf, unsigned len);
+
   Serializer();
   ~Serializer();
 
   FILE *logger;
   FILE *loggerLight;
+  FILE *loggerOutput;
   unsigned turnCount; // number of turns so far
 };
 

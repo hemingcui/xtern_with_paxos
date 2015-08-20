@@ -1997,21 +1997,42 @@ int RecorderRT<_S>::__connect(unsigned ins, int &error, int sockfd, const struct
 template <typename _S>
 ssize_t RecorderRT<_S>::__send(unsigned ins, int &error, int sockfd, const void *buf, size_t len, int flags)
 {
-  int ret = Runtime::__send(ins, error, sockfd, buf, len, flags);
+  int ret;
+  if (options::light_log_sync == 1) {
+    SCHED_TIMER_START;
+    ret = Runtime::__send(ins, error, sockfd, buf, len, flags);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, len);
+    SCHED_TIMER_END(syncfunc::send, (uint64_t) ret);
+  } else
+    ret = Runtime::__send(ins, error, sockfd, buf, len, flags);
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__sendto(unsigned ins, int &error, int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
 {
-  int ret = Runtime::__sendto(ins, error, sockfd, buf, len, flags, dest_addr, addrlen);
+  int ret;
+  if (options::light_log_sync == 1) {
+    SCHED_TIMER_START;
+    ret = Runtime::__sendto(ins, error, sockfd, buf, len, flags, dest_addr, addrlen);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, len);
+    SCHED_TIMER_END(syncfunc::sendto, (uint64_t) ret);
+  } else
+    ret = Runtime::__sendto(ins, error, sockfd, buf, len, flags, dest_addr, addrlen);
   return ret;
 }
 
 template <typename _S>
 ssize_t RecorderRT<_S>::__sendmsg(unsigned ins, int &error, int sockfd, const struct msghdr *msg, int flags)
 {
-  int ret = Runtime::__sendmsg(ins, error, sockfd, msg, flags);
+  int ret;
+  if (options::light_log_sync == 1) {
+    SCHED_TIMER_START;
+    ret = Runtime::__sendmsg(ins, error, sockfd, msg, flags);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, msg->msg_control, msg->msg_controllen);
+    SCHED_TIMER_END(syncfunc::sendmsg, (uint64_t) ret);
+  } else
+    ret = Runtime::__sendmsg(ins, error, sockfd, msg, flags);
   return ret;
 }
 
@@ -2124,7 +2145,14 @@ ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size
 template <typename _S>
 ssize_t RecorderRT<_S>::__write(unsigned ins, int &error, int fd, const void *buf, size_t count)
 {
-  ssize_t ret = Runtime::__write(ins, error, fd, buf, count);
+  ssize_t ret;
+  if (options::light_log_sync == 1 && socketFd(fd)) {
+    SCHED_TIMER_START;
+    ret = Runtime::__write(ins, error, fd, buf, count);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, count);
+    SCHED_TIMER_END(syncfunc::write, (uint64_t) ret);
+  } else
+    ret = Runtime::__write(ins, error, fd, buf, count);
   return ret;
 }
 
@@ -2190,7 +2218,14 @@ ssize_t RecorderRT<_S>::__pread(unsigned ins, int &error, int fd, void *buf, siz
 template <typename _S>
 ssize_t RecorderRT<_S>::__pwrite(unsigned ins, int &error, int fd, const void *buf, size_t count, off_t offset)
 {
-  ssize_t ret = Runtime::__pwrite(ins, error, fd, buf, count, offset);
+  ssize_t ret;
+  if (options::light_log_sync == 1 && socketFd(fd)) {
+    SCHED_TIMER_START;
+    ret = Runtime::__pwrite(ins, error, fd, buf, count, offset);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, count);
+    SCHED_TIMER_END(syncfunc::pwrite, (uint64_t) ret);
+  } else
+    ret = Runtime::__pwrite(ins, error, fd, buf, count, offset);
   return ret;
 }
 
