@@ -302,10 +302,12 @@ void paxq_open_shared_mem() {
 }
 
 void paxq_update_role(int is_leader) {
-  if (is_leader)
-    *nodeRole = ROLE_LEADER;
-  else
-    *nodeRole = ROLE_SECONDARY;
+  if (nodeRole) {// This pointer is not NULL only when sched_with_paxos is 1. 
+    if (is_leader)
+      *nodeRole = ROLE_LEADER;
+    else
+      *nodeRole = ROLE_SECONDARY;
+  }
 }
 
 int paxq_role_is_leader() {
