@@ -2153,8 +2153,8 @@ ssize_t RecorderRT<_S>::__write(unsigned ins, int &error, int fd, const void *bu
       _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, count);
       SCHED_TIMER_END(syncfunc::write, (uint64_t) ret);
     } else {
-      fprintf(stderr, "Server application pid %d sends %u bytes to sockets or reg files.\n",
-        getpid(), (unsigned)count);
+      fprintf(stderr, "Server application pid %d sends %u bytes to sockets or reg files (reg? %d).\n",
+        getpid(), (unsigned)count, regularFile(fd));
       ret = Runtime::__write(ins, error, fd, buf, count);
     }
   } else
