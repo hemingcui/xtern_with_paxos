@@ -2146,17 +2146,17 @@ template <typename _S>
 ssize_t RecorderRT<_S>::__write(unsigned ins, int &error, int fd, const void *buf, size_t count)
 {
   ssize_t ret;
-  if (options::light_log_sync == 1) {
-    if (socketFd(fd)) {
-      SCHED_TIMER_START;
-      ret = Runtime::__write(ins, error, fd, buf, count);
-      _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, count);
-      SCHED_TIMER_END(syncfunc::write, (uint64_t) ret);
-    } else {
+  /* Heming: weird, have to comment out the second condition for apache light_log_sync. */
+  if (options::light_log_sync == 1/* && socketFd(fd)*/) {
+    SCHED_TIMER_START;
+    ret = Runtime::__write(ins, error, fd, buf, count);
+    _S::logNetworkOutput(_S::self(), __FUNCTION__, buf, count);
+    SCHED_TIMER_END(syncfunc::write, (uint64_t) ret);
+    /*} else {
       fprintf(stderr, "Server application pid %d sends %u bytes to sockets or reg files (reg? %d).\n",
         getpid(), (unsigned)count, regularFile(fd));
       ret = Runtime::__write(ins, error, fd, buf, count);
-    }
+    }*/
   } else
     ret = Runtime::__write(ins, error, fd, buf, count);
   return ret;
