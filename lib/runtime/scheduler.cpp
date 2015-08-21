@@ -110,7 +110,7 @@ void Serializer::reopenLogs() {
 
 void Serializer::logNetworkOutput(int tid, const char *callerName, const void *buf, unsigned len) {
   assert(options::light_log_sync == 1);
-  fprintf(loggerOutput, "========  Tid %d, Function %s  ========\n", tid, callerName);
+  fprintf(loggerOutput, "========  Function %s  ========\n", callerName);
   void *res = malloc(len+1);
   assert(res);
   memset(res, 0, len+1);
