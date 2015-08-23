@@ -2041,10 +2041,13 @@ before this ret is returned, the conn_id is not erased by client's close() yet,
 however, after than, client's close() is executed and the recv() should be non 
 det, but then the ret of this function may cause the runtime to still run into deterministic execution. */
 bool clientSideClosed(int serverSockFd) {
-  paxq_lock();
-  bool ret = !conns_conn_id_exist(serverSockFd);
-  paxq_unlock();
-  return ret;
+  if (options::sched_with_paxos == 1) {
+    paxq_lock();
+    bool ret = !conns_conn_id_exist(serverSockFd);
+    paxq_unlock();
+    return ret;
+  } else
+    return false;
 }
 
 template <typename _S>
