@@ -97,6 +97,20 @@ void conns_init() {
   tid_map.clear();
 }
 
+/* For detecting whether the client side has closed the socket. */
+int conns_conn_id_exist(int server_sock) {
+  server_sock_to_conn_id::iterator it = server_sock_map.find(server_sock);
+  //if (it == server_sock_map.end())
+    //return 0; // Not established yet.
+  assert(it != server_sock_map.end());
+  uint64_t conn_id = it->second;
+  conn_id_to_server_sock::iterator it2 = conn_id_map.find(conn_id);
+  int ret = (it2 != conn_id_map.end());
+  DPRINT << "conns_conn_id_exist conn: server_sock " << server_sock
+    << ", conn id " << (unsigned long)conn_id << ", exist? " << ret << std::endl;
+  return ret; 
+}
+
 uint64_t conns_get_conn_id(int server_sock) {
   server_sock_to_conn_id::iterator it = server_sock_map.find(server_sock);
   assert(it != server_sock_map.end());
@@ -138,7 +152,7 @@ thread should do this job when it receives a PAXQ_CLOSE from the proxy side
 void conns_erase_by_server_sock(int server_sock) {
   server_sock_to_conn_id::iterator it2 = server_sock_map.find(server_sock);
   assert(it2 != server_sock_map.end());
-  int conn_id = it2->second;
+  uint64_t conn_id = it2->second;
   server_sock_map.erase(it2);
 
   //conn_id_to_server_sock::iterator it = conn_id_map.find(conn_id);
@@ -196,7 +210,9 @@ int conns_get_tid_from_port(unsigned port) {
 unsigned conns_get_port_from_tid(int tid) {
   assert(tid_map.find(tid) != tid_map.end());
   //fprintf(stderr, "conns_get_port_from_tid: pid %d, tid %d, return port %u\n", getpid(), tid, tid_map[tid]);
-  return tid_map[tid];
+  unsigned port = tid_map[tid];
+  //assert(port != 0);//TODO: THIS RET VALUE SHOULD NOT BE 0.
+  return port;
 }
 
 void conns_print() {

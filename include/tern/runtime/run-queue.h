@@ -399,9 +399,15 @@ public:
   }
 
   inline void print(const char *tag) {
-    //fprintf(stderr, "\n\n OP: %s: elements set size %u\n", tag, (unsigned)elements.size());
     return;
-    dbg_print(tag);
+    int i = 0;
+    fprintf(stderr, "\n\n OP: %s: elements set size %u\n", tag, (unsigned)elements.size());
+    for (run_queue::iterator itr = begin(); itr != end(); ++itr) {
+      if (i > MAX_THREAD_NUM)
+        assert(false);
+      fprintf(stderr, "q[%d] = tid %d, status = %d\n", i, *itr, itr->status);
+      i++;
+    }
   }
 
   inline void dbg_print(const char *tag) {

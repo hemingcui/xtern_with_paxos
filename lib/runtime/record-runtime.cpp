@@ -2036,12 +2036,25 @@ ssize_t RecorderRT<_S>::__sendmsg(unsigned ins, int &error, int sockfd, const st
   return ret;
 }
 
+/*TODO: current implementation may have an atomicity problem:
+before this ret is returned, the conn_id is not erased by client's close() yet,
+however, after than, client's close() is executed and the recv() should be non 
+det, but then the ret of this function may cause the runtime to still run into deterministic execution. */
+bool clientSideClosed(int serverSockFd) {
+  paxq_lock();
+  bool ret = !conns_conn_id_exist(serverSockFd);
+  paxq_unlock();
+  return ret;
+}
+
 template <typename _S>
 ssize_t RecorderRT<_S>::__recv(unsigned ins, int &error, int sockfd, void *buf, size_t len, int flags)
 {
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  bool client_closed = clientSideClosed(sockfd);
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, sockfd);
     BLOCK_TIMER_START(recv, ins, error, sockfd, buf, len, flags);
   } else {
     SOCKET_TIMER_START;
@@ -2049,7 +2062,7 @@ ssize_t RecorderRT<_S>::__recv(unsigned ins, int &error, int sockfd, void *buf, 
   }
   ssize_t ret = Runtime::__recv(ins, error, sockfd, buf, len, flags);
   debugpaxos("SOCK-RECV pself %u tid %d: %s(sock %d, bytes %u)\n", PSELF, _S::self(), __FUNCTION__, sockfd, (unsigned)ret);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::recv, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2066,7 +2079,9 @@ ssize_t RecorderRT<_S>::__recvfrom(unsigned ins, int &error, int sockfd, void *b
 {
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  bool client_closed = clientSideClosed(sockfd);
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, sockfd);
     BLOCK_TIMER_START(recvfrom, ins, error, sockfd, buf, len, flags, src_addr, addrlen);
   } else {
     SOCKET_TIMER_START;
@@ -2074,7 +2089,7 @@ ssize_t RecorderRT<_S>::__recvfrom(unsigned ins, int &error, int sockfd, void *b
   }
   ssize_t ret = Runtime::__recvfrom(ins, error, sockfd, buf, len, flags, src_addr, addrlen);
   debugpaxos("SOCK-RECV pself %u tid %d: %s(sock %d, bytes %u)\n", PSELF, _S::self(), __FUNCTION__, sockfd, (unsigned)ret);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::recvfrom, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2091,7 +2106,9 @@ ssize_t RecorderRT<_S>::__recvmsg(unsigned ins, int &error, int sockfd, struct m
 {
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  bool client_closed = clientSideClosed(sockfd);
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, sockfd);
     BLOCK_TIMER_START(recvmsg, ins, error, sockfd, msg, flags);
   } else {
     SOCKET_TIMER_START;
@@ -2100,7 +2117,7 @@ ssize_t RecorderRT<_S>::__recvmsg(unsigned ins, int &error, int sockfd, struct m
   ssize_t ret = Runtime::__recvmsg(ins, error, sockfd, msg, flags);
   debugpaxos("SOCK-RECV pself %u tid %d: %s(sock %d, bytes %u, expected %u)\n",
     PSELF, _S::self(), __FUNCTION__, sockfd, (unsigned)ret, (unsigned)msg->msg_controllen);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::recvmsg, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2121,8 +2138,10 @@ ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size
 
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   SOCKET_TIMER_DECL;
+  bool client_closed = clientSideClosed(fd);
   // Second, handle inter-process IO.
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, fd);
     BLOCK_TIMER_START(read, ins, error, fd, buf, count);
   } else {
     SOCKET_TIMER_START;
@@ -2130,7 +2149,7 @@ ssize_t RecorderRT<_S>::__read(unsigned ins, int &error, int fd, void *buf, size
   }
   ssize_t ret = Runtime::__read(ins, error, fd, buf, count);
   debugpaxos("SOCK-RECV pself %u tid %d: %s(sock %d, bytes %u)\n", PSELF, _S::self(), __FUNCTION__, fd, (unsigned)ret);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::read, (uint64_t) fd, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2173,14 +2192,16 @@ size_t RecorderRT<_S>::__fread(unsigned ins, int &error, void * ptr, size_t size
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   // Second, handle inter-process IO.
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  bool client_closed = clientSideClosed(fd);
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, fd);
     BLOCK_TIMER_START(fread, ins, error, ptr, size, count, stream);
   } else {
     SOCKET_TIMER_START;
     op = schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)size*count);
   }
   size_t ret = Runtime::__fread(ins, error, ptr, size, count, stream);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::fread, (uint64_t) ptr, (uint64_t) size);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2202,14 +2223,16 @@ ssize_t RecorderRT<_S>::__pread(unsigned ins, int &error, int fd, void *buf, siz
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
   // Second, handle inter-process IO.
   SOCKET_TIMER_DECL;
-  if (options::sched_with_paxos == 0) {
+  bool client_closed = clientSideClosed(fd);
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, fd);
     BLOCK_TIMER_START(pread, ins, error, fd, buf, count, offset);
   } else {
     SOCKET_TIMER_START;
     op = schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)count);
   }
   ssize_t ret = Runtime::__pread(ins, error, fd, buf, count, offset);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::pread, (uint64_t) fd, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2250,6 +2273,7 @@ void* get_select_wait_obj(int nfds, fd_set *readfds, fd_set *writefds, fd_set *e
   int num_server_sock = 0;
   void *ret = (void *)(long)conns_get_port_from_tid(getpid());
   for (int i = 0; i < nfds; ++i) {
+    fprintf(stderr, "Pself %u %s checking select [%d]\n", PSELF, __FUNCTION__, i);
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     if (FD_ISSET(i, readfds) && conns_is_binded_socket(i))
       hasBindedSock = true;
@@ -2326,6 +2350,8 @@ void* get_epoll_wait_obj(int epfd, struct epoll_event *events, int maxevents) {
   for (int i = 0; i < maxevents; ++i) {
     // If there are established server sockets with the clients, then use this sock for wait obj for _S::wait(obj).
     int server_sock = events[i].data.fd;
+    fprintf(stderr, "Pself %u %s checking epoll events(%p)[%d].fd %d\n",
+      (unsigned)pthread_self(), __FUNCTION__, (void *)&events, i, server_sock);
     if (conns_is_binded_socket(server_sock))
       hasBindedSock = true;
     if (conns_exist_by_server_sock(server_sock)) {
@@ -2518,15 +2544,17 @@ char *RecorderRT<_S>::__fgets(unsigned ins, int &error, char *s, int size, FILE 
     return fgets(s, size, stream);  // Directly call the libc fgets() for regular IO.
 
   paxos_op op = {0, 0, PAXQ_INVALID, 0};
+  bool client_closed = clientSideClosed(fd);
   // Second, handle inter-process IO.
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
+    debugpaxos("NON DET: Pself %u tid %d: %s(sock %d)\n", PSELF, _S::self(), __FUNCTION__, fd);
     BLOCK_TIMER_START(fgets, ins, error, s, size, stream);
   } else {
     SOCKET_TIMER_START;
     op = schedSocketOp(__FUNCTION__, DMT_RECV, fd, NULL, (unsigned)size);
   }
   char * ret = Runtime::__fgets(ins, error, s, size, stream);
-  if (options::sched_with_paxos == 0) {
+  if (options::sched_with_paxos == 0 || client_closed) {
     BLOCK_TIMER_END(syncfunc::fgets, (uint64_t) ret);
   } else {
     /** A recv() at server side may correspond to multiple send() at client side. **/
@@ -2918,8 +2946,8 @@ static int curTimeBubbleCnt = 0;
 template <typename _S>
 paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, long sockFd,
   void *selectWaitObj, unsigned recvLen) {
-#ifdef DEBUG_SCHED_WITH_PAXOS
   struct timeval tnow;
+#ifdef DEBUG_SCHED_WITH_PAXOS
   if (_S::self() >= 2) { 
     gettimeofday(&tnow, NULL);
     fprintf(stderr, "ENTER schedSocketOp <%ld.%ld> pself %u tid %d, turnCount %u (%s, %s, %ld)\n",
@@ -2968,7 +2996,10 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       }
     } else {
       if (op.type == PAXQ_CONNECT) {
-        _S::signal((void *)(long)conns_get_port_from_tid(getpid()));
+        unsigned port = conns_get_port_from_tid(getpid()); 
+        if (port == 0)
+          port = DEFAULT_PORT;
+        _S::signal((void *)(long)port);
       } else if (op.type == PAXQ_SEND) {
         _S::signal((void *)(long)conns_get_server_sock(op.connection_id)); 
       } else if (op.type == PAXQ_CLOSE) {
@@ -2986,6 +3017,8 @@ paxos_op RecorderRT<_S>::schedSocketOp(const char *funcName, SyncType syncType, 
       _S::wait(selectWaitObj);
     } else if (syncType == DMT_ACCEPT) {
       unsigned port = conns_get_port_from_tid(getpid()); 
+      if (port == 0)
+        port = DEFAULT_PORT;
       _S::wait((void *)(long)port);
     } else {
       assert(syncType == DMT_RECV);

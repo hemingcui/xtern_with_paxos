@@ -23,6 +23,8 @@
 extern "C" {
 #endif
 
+#define DEFAULT_PORT 39999 /* For apache, because the worker process directly 
+blocks on accept without calling bind() (its parent calls it).*/
 
 typedef enum {
   PAXQ_INVALID = 0,
@@ -49,6 +51,7 @@ typedef struct {
 
 /// APIs for the proxy-server two-way mapping connections.
 void conns_init();
+int conns_conn_id_exist(int server_sock);
 uint64_t conns_get_conn_id(int server_sock);
 int conns_get_server_sock(uint64_t conn_id);
 int conns_exist_by_conn_id(uint64_t conn_id);
